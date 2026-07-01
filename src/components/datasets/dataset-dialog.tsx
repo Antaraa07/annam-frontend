@@ -95,7 +95,7 @@ export default function DatasetDialog({ open, onOpenChange, dataset }: Props) {
 interface InfoCardProps {
   icon: React.ElementType;
   label: string;
-  value: string;
+  value: string | undefined;
   mono?: boolean;
 }
 
