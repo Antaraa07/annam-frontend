@@ -84,7 +84,7 @@ export async function createProject(input: {
 
   form.append("username", "antara");
 
-  const res = await fetch(`/projects`, {
+  const res = await fetch(`${API_URL}/projects`, {
     method: "POST",
     body: form,
   });
