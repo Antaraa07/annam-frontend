@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 import Sidebar from "@/components/layout/sidebar";
 import Topbar from "@/components/layout/topbar";
@@ -9,12 +9,13 @@ import MouseTracker from "@/components/ui/mouse-tracker";
 import Link from "next/link";
 
 import { Project } from "@/types/project";
-import { createProject, listMyProjects } from "@/services/projects";
+import { createProject, deleteProject, listMyProjects } from "@/services/projects";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { usePolling } from "@/hooks/usePolling";
 
 export default function ProjectsPage() {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -35,9 +36,7 @@ export default function ProjectsPage() {
     }
   }
 
-  useEffect(() => {
-    load();
-  }, []);
+  usePolling(load);
 
   const labelClasses = useMemo(() => {
     const v = labelClassesRaw.trim();
@@ -47,6 +46,17 @@ export default function ProjectsPage() {
       .map((s) => s.trim())
       .filter(Boolean);
   }, [labelClassesRaw]);
+
+  async function onDelete(e: React.MouseEvent, projectId: string) {
+    e.preventDefault();
+    if (!window.confirm("Delete this project?")) return;
+    try {
+      await deleteProject(projectId);
+      setProjects((prev) => prev.filter((p) => p.project_id !== projectId));
+    } catch {
+      alert("Delete failed");
+    }
+  }
 
   async function onCreate() {
     setCreating(true);
@@ -138,8 +148,15 @@ export default function ProjectsPage() {
                           <h2 className="text-lg font-semibold text-white">{p.name}</h2>
                           <p className="mt-2 text-sm text-zinc-400">{p.description}</p>
                         </div>
-                        <div className="text-right">
+                        <div className="flex flex-col items-end gap-2">
                           <p className="text-xs text-zinc-500">{p.label_classes?.length ? `${p.label_classes.length} labels` : "No labels"}</p>
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={(e) => onDelete(e, p.project_id)}
+                          >
+                            Delete
+                          </Button>
                         </div>
                       </div>
                       <div className="mt-4 text-sm text-emerald-400">View dashboard →</div>

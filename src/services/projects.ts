@@ -99,6 +99,15 @@ export async function createProject(input: {
   return (await res.json()) as Project;
 }
 
+export async function deleteProject(projectId: string) {
+  const res = await fetch(
+    `${API_URL}/projects/${encodeURIComponent(projectId)}?username=antara`,
+    { method: "DELETE" }
+  );
+  if (!res.ok) throw new Error("Failed to delete project");
+  return res.json();
+}
+
 export async function listMyProjects() {
   const res = await fetch(
     `${API_URL}/projects?username=antara`

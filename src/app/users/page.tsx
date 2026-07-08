@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 import MouseTracker from "@/components/ui/mouse-tracker";
 import Sidebar from "@/components/layout/sidebar";
 import Topbar from "@/components/layout/topbar";
+import { usePolling } from "@/hooks/usePolling";
 
 type UserRecord = Record<string, unknown>;
 
@@ -28,10 +29,7 @@ export default function UsersPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
+  async function load() {
       try {
         setLoading(true);
         setError(null);
@@ -40,27 +38,16 @@ export default function UsersPage() {
         if (!res.ok) throw new Error(`Request failed: ${res.status}`);
 
         const data = await res.json();
-        if (cancelled) return;
-
         setUsers(normalizeUsersPayload(data));
       } catch (e) {
-        if (cancelled) return;
-
-        const message =
-          e instanceof Error ? e.message : "Failed to load users";
-
+        const message = e instanceof Error ? e.message : "Failed to load users";
         setError(message);
       } finally {
-        if (!cancelled) setLoading(false);
+        setLoading(false);
       }
     }
 
-    load();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  usePolling(load);
 
   const columns = useMemo(() => {
     const first = users[0];

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { Download, Upload, Loader2 } from "lucide-react";
 
@@ -12,6 +12,7 @@ import { getProjectStats, bulkDownloadFromProject, getProjectImages } from "@/se
 import { Dataset } from "@/types/dataset";
 import { downloadBlob, downloadMultipleFiles } from "@/utils/download";
 import { getImageUrl } from "@/services/datasets";
+import { usePolling } from "@/hooks/usePolling";
 
 import Link from "next/link";
 
@@ -25,24 +26,18 @@ export default function ProjectDashboardPage() {
   const [downloadLoading, setDownloadLoading] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState({ completed: 0, total: 0 });
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      setLoading(true);
-      try {
-        const stats = await getProjectStats(projectId);
-        if (cancelled) return;
-        setTotalImages(stats.total_images);
-        setRecentUploads(stats.recent_uploads);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
+  async function loadStats() {
+    setLoading(true);
+    try {
+      const stats = await getProjectStats(projectId);
+      setTotalImages(stats.total_images);
+      setRecentUploads(stats.recent_uploads);
+    } finally {
+      setLoading(false);
+    }
+  }
 
-    return () => {
-      cancelled = true;
-    };
-  }, [projectId]);
+  usePolling(loadStats);
 
   const handleBulkDownload = async () => {
     if (downloadLoading) return;

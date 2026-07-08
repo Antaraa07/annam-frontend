@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import Sidebar from "@/components/layout/sidebar";
 import Topbar from "@/components/layout/topbar";
@@ -18,6 +18,7 @@ import {
 } from "@/services/analytics";
 
 import { getRecentActivity } from "@/services/activity";
+import { usePolling } from "@/hooks/usePolling";
 
 interface Summary {
   datasets: number;
@@ -38,8 +39,7 @@ export default function AnalyticsPage() {
   const [activity, setActivity] = useState<RecentActivityItem[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    async function loadAnalytics() {
+  async function loadAnalytics() {
       try {
         const [summaryData, ownerData, departmentData, activityData] =
           await Promise.all([
@@ -60,8 +60,7 @@ export default function AnalyticsPage() {
       }
     }
 
-    loadAnalytics();
-  }, []);
+  usePolling(loadAnalytics);
 
   return (
     <div className="relative flex h-screen overflow-hidden bg-zinc-950">

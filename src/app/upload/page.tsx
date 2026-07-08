@@ -1,3 +1,5 @@
+"use client";
+
 import Sidebar from "@/components/layout/sidebar";
 import Topbar from "@/components/layout/topbar";
 import MouseTracker from "@/components/ui/mouse-tracker";

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 import Sidebar from "@/components/layout/sidebar";
 import Topbar from "@/components/layout/topbar";
@@ -12,6 +12,7 @@ import SearchFilter from "@/components/datasets/search-filter";
 
 import { getDatasets, deleteDataset } from "@/services/datasets";
 import { Dataset } from "@/types/dataset";
+import { usePolling } from "@/hooks/usePolling";
 
 export default function DatasetsPage() {
   const [datasets, setDatasets]           = useState<Dataset[]>([]);
@@ -33,14 +34,7 @@ export default function DatasetsPage() {
     }
   }
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try { await loadDatasets(); }
-      finally { if (cancelled) return; }
-    })();
-    return () => { cancelled = true; };
-  }, []);
+  usePolling(loadDatasets);
 
   const owners = useMemo(
     () => [...new Set(datasets.map((d) => d.owner))],
