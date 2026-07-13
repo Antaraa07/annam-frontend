@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useCallback } from "react";
 
 export function usePolling(fn: () => void, intervalMs: number = 8000) {
   const fnRef = useRef(fn);
@@ -6,7 +6,5 @@ export function usePolling(fn: () => void, intervalMs: number = 8000) {
 
   useEffect(() => {
     fnRef.current();
-    const id = window.setInterval(() => fnRef.current(), intervalMs);
-    return () => window.clearInterval(id);
-  }, [intervalMs]);
+  }, []);
 }

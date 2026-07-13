@@ -1,235 +1,155 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState, useEffect } from "react";
+import { toast } from "sonner";
+import { KeyRound, User } from "lucide-react";
 
-import MouseTracker from "@/components/ui/mouse-tracker";
 import Sidebar from "@/components/layout/sidebar";
 import Topbar from "@/components/layout/topbar";
+import MouseTracker from "@/components/ui/mouse-tracker";
 
-type SettingSection = {
-  id: string;
-  title: string;
-  description: string;
-};
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+const inputClass =
+  "w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2.5 text-sm text-white placeholder-zinc-600 outline-none transition-colors focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/20";
 
 export default function SettingsPage() {
-  const sections: SettingSection[] = useMemo(
-    () => [
-      {
-        id: "profile",
-        title: "Profile",
-        description: "Update basic account information.",
-      },
-      {
-        id: "security",
-        title: "Security",
-        description: "Password and session preferences.",
-      },
-      {
-        id: "preferences",
-        title: "Preferences",
-        description: "Workspace and UI preferences.",
-      },
-    ],
-    []
-  );
+  const [username, setUsername] = useState("");
+  const [role, setRole] = useState("");
 
-  const [activeId, setActiveId] = useState(sections[0]?.id ?? "profile");
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setUsername(localStorage.getItem("username") || "");
+    setRole(localStorage.getItem("role") || "");
+  }, []);
+
+  async function handleChangePassword(e: React.FormEvent) {
+    e.preventDefault();
+
+    if (newPassword.length < 6) {
+      toast.error("New password must be at least 6 characters");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      toast.error("New passwords do not match");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const res = await fetch(`${API_URL}/auth/change-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username,
+          current_password: currentPassword,
+          new_password: newPassword,
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || "Failed to change password");
+      }
+
+      toast.success("Password changed successfully");
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+    } catch (err: any) {
+      toast.error(err.message || "Something went wrong");
+    } finally {
+      setSaving(false);
+    }
+  }
 
   return (
     <div className="relative flex h-screen overflow-hidden bg-zinc-950">
       <MouseTracker />
-
       <div className="relative z-10 flex w-full">
         <Sidebar />
-
         <main className="flex flex-1 flex-col overflow-hidden">
           <Topbar />
-
           <div className="flex-1 overflow-auto p-8">
-            <div className="mb-8 flex items-start justify-between gap-6">
-              <div>
-                <h1 className="text-2xl font-bold text-white">Settings</h1>
-                <p className="mt-1 text-sm text-zinc-500">
-                  Configure your account and workspace.
-                </p>
-              </div>
+            <h1 className="text-2xl font-bold text-white">Settings</h1>
+            <p className="mt-1 text-sm text-zinc-500">Manage your account</p>
 
-              <div className="rounded-2xl border border-zinc-800 bg-zinc-900 px-4 py-3">
-                <p className="text-xs font-medium text-zinc-400">Status</p>
-                <p className="mt-1 text-sm font-semibold text-emerald-300">
-                  Ready
-                </p>
-              </div>
-            </div>
+            <div className="mt-8 max-w-lg space-y-6">
 
-            <div className="grid gap-6 xl:grid-cols-12">
-              <div className="xl:col-span-4">
-                <div className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-2">
-                  {sections.map((s) => {
-                    const isActive = s.id === activeId;
-                    return (
-                      <button
-                        key={s.id}
-                        type="button"
-                        onClick={() => setActiveId(s.id)}
-                        className={
-                          "w-full rounded-xl px-4 py-3 text-left transition-colors " +
-                          (isActive
-                            ? "bg-zinc-800 text-white"
-                            : "text-zinc-300 hover:bg-zinc-950/40 hover:text-white")
-                        }
-                      >
-                        <div className="text-sm font-semibold">{s.title}</div>
-                        <div className="mt-1 text-xs text-zinc-500">
-                          {s.description}
-                        </div>
-                      </button>
-                    );
-                  })}
+              {/* Account info */}
+              <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-5">
+                <div className="mb-4 flex items-center gap-2">
+                  <User size={15} className="text-emerald-400" />
+                  <h2 className="text-sm font-semibold text-white">Account</h2>
                 </div>
-              </div>
-
-              <div className="xl:col-span-8">
-                <div className="rounded-2xl border border-zinc-800 bg-zinc-900/40">
-                  <div className="border-b border-zinc-800 px-6 py-5">
-                    <p className="text-sm font-semibold text-white">
-                      {sections.find((s) => s.id === activeId)?.title}
-                    </p>
-                    <p className="mt-1 text-xs text-zinc-500">
-                      {sections.find((s) => s.id === activeId)?.description}
-                    </p>
+                <div className="space-y-3">
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-zinc-400">Username</label>
+                    <input value={username} readOnly className={`${inputClass} cursor-not-allowed opacity-60`} />
                   </div>
-
-                  <div className="p-6">
-                    {activeId === "profile" && (
-                      <div className="grid gap-4">
-                        <div className="grid gap-2">
-                          <label className="text-xs font-medium text-zinc-300">
-                            Display name
-                          </label>
-                          <input
-                            className="h-10 rounded-xl border border-zinc-800 bg-zinc-950/40 px-3 text-sm text-white outline-none focus:border-emerald-500/60"
-                            defaultValue="Admin"
-                            disabled
-                          />
-                        </div>
-
-                        <div className="grid gap-2">
-                          <label className="text-xs font-medium text-zinc-300">
-                            Email
-                          </label>
-                          <input
-                            className="h-10 rounded-xl border border-zinc-800 bg-zinc-950/40 px-3 text-sm text-white outline-none focus:border-emerald-500/60"
-                            defaultValue="admin@annam.local"
-                            disabled
-                          />
-                        </div>
-
-                        <div className="rounded-xl border border-zinc-800 bg-zinc-950/30 p-4">
-                          <p className="text-xs font-semibold text-zinc-200">
-                            Note
-                          </p>
-                          <p className="mt-1 text-xs text-zinc-500">
-                            Profile editing UI is present, but backend wiring for saving
-                            changes is not implemented in this codebase yet.
-                          </p>
-                        </div>
-
-                        <div className="flex justify-end">
-                          <button
-                            type="button"
-                            className="h-10 rounded-xl bg-zinc-800 px-4 text-sm font-semibold text-zinc-200 opacity-60"
-                            disabled
-                          >
-                            Save changes
-                          </button>
-                        </div>
-                      </div>
-                    )}
-
-                    {activeId === "security" && (
-                      <div className="grid gap-4">
-                        <div className="grid gap-2">
-                          <label className="text-xs font-medium text-zinc-300">
-                            Change password
-                          </label>
-                          <input
-                            type="password"
-                            className="h-10 rounded-xl border border-zinc-800 bg-zinc-950/40 px-3 text-sm text-white outline-none focus:border-emerald-500/60"
-                            placeholder="••••••••"
-                            disabled
-                          />
-                        </div>
-
-                        <div className="grid gap-2">
-                          <label className="text-xs font-medium text-zinc-300">
-                            Two-factor authentication
-                          </label>
-                          <input
-                            className="h-10 rounded-xl border border-zinc-800 bg-zinc-950/40 px-3 text-sm text-white outline-none focus:border-emerald-500/60"
-                            defaultValue="Disabled"
-                            disabled
-                          />
-                        </div>
-
-                        <div className="flex justify-end">
-                          <button
-                            type="button"
-                            className="h-10 rounded-xl bg-zinc-800 px-4 text-sm font-semibold text-zinc-200 opacity-60"
-                            disabled
-                          >
-                            Update security
-                          </button>
-                        </div>
-                      </div>
-                    )}
-
-                    {activeId === "preferences" && (
-                      <div className="grid gap-4">
-                        <div className="grid gap-2">
-                          <label className="text-xs font-medium text-zinc-300">
-                            Theme
-                          </label>
-                          <select
-                            className="h-10 rounded-xl border border-zinc-800 bg-zinc-950/40 px-3 text-sm text-white outline-none focus:border-emerald-500/60"
-                            defaultValue="dark"
-                            disabled
-                          >
-                            <option value="dark">Dark</option>
-                            <option value="light">Light</option>
-                          </select>
-                        </div>
-
-                        <div className="grid gap-2">
-                          <label className="text-xs font-medium text-zinc-300">
-                            Data refresh
-                          </label>
-                          <select
-                            className="h-10 rounded-xl border border-zinc-800 bg-zinc-950/40 px-3 text-sm text-white outline-none focus:border-emerald-500/60"
-                            defaultValue="8s"
-                            disabled
-                          >
-                            <option value="5s">Every 5s</option>
-                            <option value="8s">Every 8s</option>
-                            <option value="15s">Every 15s</option>
-                          </select>
-                        </div>
-
-                        <div className="flex justify-end">
-                          <button
-                            type="button"
-                            className="h-10 rounded-xl bg-zinc-800 px-4 text-sm font-semibold text-zinc-200 opacity-60"
-                            disabled
-                          >
-                            Save preferences
-                          </button>
-                        </div>
-                      </div>
-                    )}
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-zinc-400">Role</label>
+                    <input value={role} readOnly className={`${inputClass} cursor-not-allowed opacity-60 capitalize`} />
                   </div>
                 </div>
               </div>
+
+              {/* Change password */}
+              <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-5">
+                <div className="mb-4 flex items-center gap-2">
+                  <KeyRound size={15} className="text-emerald-400" />
+                  <h2 className="text-sm font-semibold text-white">Change Password</h2>
+                </div>
+                <form onSubmit={handleChangePassword} className="space-y-3">
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-zinc-400">Current password</label>
+                    <input
+                      type="password"
+                      value={currentPassword}
+                      onChange={(e) => setCurrentPassword(e.target.value)}
+                      placeholder="••••••••"
+                      required
+                      className={inputClass}
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-zinc-400">New password</label>
+                    <input
+                      type="password"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      placeholder="••••••••"
+                      required
+                      className={inputClass}
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-zinc-400">Confirm new password</label>
+                    <input
+                      type="password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      placeholder="••••••••"
+                      required
+                      className={inputClass}
+                    />
+                  </div>
+                  <div className="pt-1">
+                    <button
+                      type="submit"
+                      disabled={saving || !currentPassword || !newPassword || !confirmPassword}
+                      className="w-full rounded-lg bg-emerald-500 py-2.5 text-sm font-semibold text-zinc-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {saving ? "Saving..." : "Update Password"}
+                    </button>
+                  </div>
+                </form>
+              </div>
+
             </div>
           </div>
         </main>
@@ -237,6 +157,3 @@ export default function SettingsPage() {
     </div>
   );
 }
-
-
-

@@ -3,59 +3,15 @@ import { MOCK_DATA, mockApiCall } from './mock-api';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
-// Mock datasets for development
-const MOCK_DATASETS: Dataset[] = [
-  {
-    image_id: "1",
-    dataset_name: "Rice Disease Classification",
-    owner: "John Doe", 
-    "lab/dept": "Computer Science",
-    version: "v1.2",
-    filename: "rice_dataset.jpg",
-    description: "Dataset for classifying rice plant diseases"
-  },
-  {
-    image_id: "2",
-    dataset_name: "Tomato Leaf Analysis",
-    owner: "Jane Smith",
-    "lab/dept": "Biology", 
-    version: "v2.0",
-    filename: "tomato_dataset.jpg",
-    description: "Analysis of tomato leaf patterns and diseases"
-  },
-  {
-    image_id: "3",
-    dataset_name: "Wheat Rust Detection",
-    owner: "Mike Johnson",
-    "lab/dept": "Physics",
-    version: "v1.5", 
-    filename: "wheat_dataset.jpg",
-    description: "Detection system for wheat rust disease"
-  },
-  {
-    image_id: "4",
-    dataset_name: "Plant Growth Analysis",
-    owner: "Sarah Wilson",
-    "lab/dept": "Biology",
-    version: "v1.0",
-    filename: "plant_growth.jpg",
-    description: "Comprehensive plant growth analysis dataset"
-  },
-  {
-    image_id: "5",
-    dataset_name: "Crop Yield Prediction",
-    owner: "David Brown",
-    "lab/dept": "Mathematics",
-    version: "v1.1",
-    filename: "crop_yield.jpg",
-    description: "Machine learning dataset for crop yield prediction"
-  }
-];
+// Mock datasets fallback (empty - no dummy data)
+const MOCK_DATASETS: Dataset[] = [];
 
 /* Get all datasets */
 export async function getDatasets(): Promise<Dataset[]> {
   try {
-    const response = await fetch(`${API_URL}/datasets`);
+    const username = typeof window !== "undefined" ? localStorage.getItem("username") : null;
+    const url = username ? `${API_URL}/datasets?username=${username}` : `${API_URL}/datasets`;
+    const response = await fetch(url);
 
     if (!response.ok) {
       throw new Error("Failed to fetch datasets");
@@ -103,13 +59,40 @@ export function getImageUrl(filename?: string | null) {
 }
 
 export function getDownloadUrl(filename?: string | null) {
-  if (!filename || typeof filename !== 'string') {
-    return '#'; // Fallback for missing filename
+  if (!filename || typeof filename !== 'string') return '#';
+  return `${API_URL}/download/${filename}`;
+}
+
+export interface StructuredDownloadRequest {
+  username?: string;
+  group_by: "label" | "category" | "owner" | "dataset_name";
+  formats: string[];
+  category?: string;
+  label?: string;
+  owner?: string;
+  search?: string;
+  project_id?: string;
+  source?: string;
+}
+
+export async function downloadStructured(req: StructuredDownloadRequest): Promise<void> {
+  const res = await fetch(`${API_URL}/datasets/download/structured`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "Download failed" }));
+    throw new Error(err.detail || "Download failed");
   }
-  
-  try {
-    return `${API_URL}/download/${filename}`;
-  } catch {
-    return '#'; // Fallback for download
-  }
+  const blob = await res.blob();
+  const disposition = res.headers.get("Content-Disposition") || "";
+  const match = disposition.match(/filename=([^;]+)/);
+  const filename = match ? match[1] : "annam_export.zip";
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
 }

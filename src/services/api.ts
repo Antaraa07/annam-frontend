@@ -5,9 +5,9 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 export async function getSummary(): Promise<DashboardSummary> {
   try {
-    const response = await fetch(
-      `${API_URL}/analytics/summary`
-    );
+    const username = typeof window !== "undefined" ? localStorage.getItem("username") : null;
+    const params = username ? `?username=${encodeURIComponent(username)}` : "";
+    const response = await fetch(`${API_URL}/analytics/summary${params}`);
 
     if (!response.ok) {
       throw new Error(`Failed to fetch summary: ${response.status} ${response.statusText}`);

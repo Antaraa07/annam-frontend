@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { Download, Database, User, Building2, Tag, FileText, Hash, File } from "lucide-react";
+import { Download, Database, User, Tag, FileText, Hash, File, Calendar, FolderOpen } from "lucide-react";
 
 import { Dataset } from "@/types/dataset";
 import { getImageUrl, getDownloadUrl } from "@/services/datasets";
@@ -58,13 +58,20 @@ export default function DatasetDialog({ open, onOpenChange, dataset }: Props) {
 
           {/* Row 1: 4 equal columns */}
           <div className="grid grid-cols-4 gap-2">
-            <InfoCard icon={Database}  label="Dataset"    value={dataset.dataset_name} />
-            <InfoCard icon={User}      label="Owner"      value={dataset.owner} />
-            <InfoCard icon={Building2} label="Department" value={dataset["lab/dept"]} />
-            <InfoCard icon={Tag}       label="Version"    value={dataset.version} />
+            <InfoCard icon={Database}    label="Dataset"    value={dataset.dataset_name} />
+            <InfoCard icon={User}        label="Owner"      value={dataset.owner} />
+            <InfoCard icon={Tag}         label="Label"      value={dataset.label} />
+            <InfoCard icon={Tag}         label="Category"   value={dataset["lab/dept"]} />
           </div>
 
-          {/* Row 2: description half, image id quarter, filename quarter */}
+          {/* Row 2 */}
+          <div className="grid grid-cols-3 gap-2">
+            <InfoCard icon={FolderOpen}  label="Project ID" value={dataset.project_id} mono />
+            <InfoCard icon={Calendar}    label="Uploaded"   value={dataset.timestamp ? new Date(dataset.timestamp).toLocaleString("en-IN") : undefined} />
+            <InfoCard icon={FileText}    label="Version"    value={dataset.version} />
+          </div>
+
+          {/* Row 3 */}
           <div className="grid grid-cols-2 gap-2">
             <InfoCard icon={FileText} label="Description" value={dataset.description} />
             <div className="grid grid-rows-2 gap-2">

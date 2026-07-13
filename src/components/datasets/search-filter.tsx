@@ -2,74 +2,73 @@
 
 import { Input } from "@/components/ui/input";
 
+const CATEGORIES = ["Disease", "Pest", "Damage", "Disease Damage", "Healthy", "Other"];
+
 interface Props {
   search: string;
-  setSearch: (value: string) => void;
-
+  setSearch: (v: string) => void;
   owner: string;
-  setOwner: (value: string) => void;
-
-  department: string;
-  setDepartment: (value: string) => void;
-
+  setOwner: (v: string) => void;
+  category: string;
+  setCategory: (v: string) => void;
+  label: string;
+  setLabel: (v: string) => void;
+  source: string;
+  setSource: (v: string) => void;
   owners: string[];
-  departments: string[];
 }
 
 export default function SearchFilter({
-  search,
-  setSearch,
-  owner,
-  setOwner,
-  department,
-  setDepartment,
+  search, setSearch,
+  owner, setOwner,
+  category, setCategory,
+  label, setLabel,
+  source, setSource,
   owners,
-  departments,
 }: Props) {
   return (
-    <div className="mb-6 grid gap-4 md:grid-cols-3">
-
-      {/* Search */}
-
+    <div className="mb-6 grid gap-3 md:grid-cols-5">
       <Input
-        placeholder="Search datasets..."
+        placeholder="Search datasets…"
         value={search}
         onChange={(e) => setSearch(e.target.value)}
-        className="border-zinc-800 bg-zinc-900 text-white"
+        className="border-zinc-800 bg-zinc-900 text-white placeholder-zinc-600"
       />
 
-      {/* Owner */}
+      <Input
+        placeholder="Filter by label…"
+        value={label}
+        onChange={(e) => setLabel(e.target.value)}
+        className="border-zinc-800 bg-zinc-900 text-white placeholder-zinc-600"
+      />
 
       <select
         value={owner}
         onChange={(e) => setOwner(e.target.value)}
-        className="rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 text-white"
+        className="rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-white outline-none focus:border-emerald-500"
       >
         <option value="">All Owners</option>
-
-        {(owners || []).map((o, index) => (
-          <option key={`owner-${o}-${index}`} value={o}>
-            {o}
-          </option>
-        ))}
+        {owners.map((o) => <option key={o} value={o}>{o}</option>)}
       </select>
-
-      {/* Department */}
 
       <select
-        value={department}
-        onChange={(e) => setDepartment(e.target.value)}
-        className="rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 text-white"
+        value={category}
+        onChange={(e) => setCategory(e.target.value)}
+        className="rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-white outline-none focus:border-emerald-500"
       >
-        <option value="">All Departments</option>
-
-        {(departments || []).map((d, index) => (
-          <option key={`dept-${d}-${index}`} value={d}>
-            {d}
-          </option>
-        ))}
+        <option value="">All Categories</option>
+        {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
       </select>
 
+      <select
+        value={source}
+        onChange={(e) => setSource(e.target.value)}
+        className="rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-white outline-none focus:border-emerald-500"
+      >
+        <option value="">All Sources</option>
+        <option value="raw">Raw Upload</option>
+        <option value="annotated">Annotated (Project)</option>
+      </select>
     </div>
   );
 }

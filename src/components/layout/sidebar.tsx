@@ -1,58 +1,53 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 import {
   LayoutDashboard,
   Database,
-  Upload,
+  ImagePlus,
   BarChart3,
   Users,
   Settings,
+  FolderKanban,
+  LogOut,
 } from "lucide-react";
 
-const menuItems = [
-  {
-    title: "Dashboard",
-    href: "/",
-    icon: LayoutDashboard,
-  },
-  {
-    title: "Datasets",
-    href: "/datasets",
-    icon: Database,
-  },
-  {
-    title: "Upload",
-    href: "/upload",
-    icon: Upload,
-  },
-  {
-    title: "Analytics",
-    href: "/analytics",
-    icon: BarChart3,
-  },
-  {
-    title: "Users",
-    href: "/users",
-    icon: Users,
-  },
-  {
-    title: "Projects",
-    href: "/projects",
-    icon: LayoutDashboard,
-  },
-  {
-    title: "Settings",
-    href: "/settings",
-    icon: Settings,
-  },
+
+const ALL_MENU_ITEMS = [
+  { title: "Dashboard",        href: "/",          icon: LayoutDashboard, adminOnly: false },
+  { title: "Datasets",         href: "/datasets",   icon: Database,        adminOnly: false },
+  { title: "Raw Data Upload",  href: "/upload",     icon: ImagePlus,       adminOnly: false },
+  { title: "Analytics",        href: "/analytics",  icon: BarChart3,       adminOnly: false },
+  { title: "Projects",         href: "/projects",   icon: FolderKanban,    adminOnly: false },
+  { title: "Users",            href: "/users",      icon: Users,           adminOnly: true  },
+  { title: "Settings",         href: "/settings",   icon: Settings,        adminOnly: false },
 ];
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
+  const [user, setUser] = useState({ username: "", role: "" });
+
+  useEffect(() => {
+    setUser({
+      username: localStorage.getItem("username") || "",
+      role: localStorage.getItem("role") || "",
+    });
+  }, []);
+
+  const isAdmin = user.role === "admin";
+  const menuItems = ALL_MENU_ITEMS.filter((item) => !item.adminOnly || isAdmin);
+
+  const handleLogout = () => {
+    localStorage.removeItem("username");
+    localStorage.removeItem("role");
+    router.push("/login");
+  };
+
 
   return (
     <motion.aside
@@ -129,23 +124,31 @@ export default function Sidebar() {
         })}
       </nav>
 
-      {/* User */}
-      <div className="border-t border-zinc-800/60 px-4 py-4">
-        <div className="flex items-center gap-3 rounded-xl px-2 py-2">
-          <div className="flex h-7 w-7 items-center justify-center rounded-full bg-zinc-700 text-xs font-bold text-white">
-            N
+      {/* User & Logout */}
+      <div className="border-t border-zinc-800/60 px-4 py-4 space-y-2">
+        <div className="flex items-center gap-3 rounded-xl px-2 py-1">
+          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-500/10 text-xs font-bold text-emerald-400 border border-emerald-500/20 uppercase">
+            {user.username.slice(0, 2)}
           </div>
 
-          <div>
-            <p className="text-xs font-medium text-zinc-300">
-              User
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-medium text-zinc-300 truncate">
+              {user.username}
             </p>
 
-            <p className="text-[10px] text-zinc-600">
-              Admin
+            <p className="text-[10px] text-zinc-500 capitalize">
+              {user.role}
             </p>
           </div>
         </div>
+
+        <button
+          onClick={handleLogout}
+          className="flex w-full items-center gap-3 rounded-xl px-4 py-2 text-xs font-medium text-red-400 hover:bg-red-500/10 hover:text-red-300 transition-colors duration-200"
+        >
+          <LogOut size={14} className="shrink-0" />
+          <span>Logout</span>
+        </button>
       </div>
     </motion.aside>
   );

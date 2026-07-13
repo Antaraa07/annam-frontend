@@ -1,51 +1,105 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState, useEffect, useRef } from "react";
+import { RefreshCw, UserPlus, UserMinus, ChevronDown, ChevronUp, Upload, FolderOpen, Plus, X } from "lucide-react";
+import Link from "next/link";
 
 import Sidebar from "@/components/layout/sidebar";
 import Topbar from "@/components/layout/topbar";
 import MouseTracker from "@/components/ui/mouse-tracker";
 
-import Link from "next/link";
-
 import { Project } from "@/types/project";
-import { createProject, deleteProject, listMyProjects } from "@/services/projects";
+import {
+  createProject, deleteProject,
+  listMyProjects, listAssignedProjects,
+  assignUser, unassignUser,
+} from "@/services/projects";
 
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { usePolling } from "@/hooks/usePolling";
+import { toast } from "sonner";
+
+interface UserEntry { username: string; role: string; }
 
 export default function ProjectsPage() {
+  const [role, setRole] = useState("");
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [allUsers, setAllUsers] = useState<UserEntry[]>([]);
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [assigning, setAssigning] = useState<Record<string, boolean>>({});
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [labelClassesRaw, setLabelClassesRaw] = useState("");
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const [customInput, setCustomInput] = useState("");
   const [creating, setCreating] = useState(false);
+
+  const DEFAULT_CATEGORIES = ["Disease", "Pest", "Damage", "Disease Damage"];
+  const customInputRef = useRef<HTMLInputElement>(null);
+
+  function toggleCategory(cat: string) {
+    setSelectedCategories((prev) =>
+      prev.includes(cat) ? prev.filter((c) => c !== cat) : [...prev, cat]
+    );
+  }
+
+  function addCustomCategory() {
+    const val = customInput.trim();
+    if (!val || selectedCategories.includes(val)) { setCustomInput(""); return; }
+    setSelectedCategories((prev) => [...prev, val]);
+    setCustomInput("");
+    customInputRef.current?.focus();
+  }
+
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+  const isAdmin = role === "admin";
+
+  useEffect(() => {
+    setRole(localStorage.getItem("role") || "");
+  }, []);
 
   async function load() {
     try {
       setLoading(true);
-      const data = await listMyProjects();
+      const data = isAdmin ? await listMyProjects() : await listAssignedProjects();
       setProjects(data);
+    } catch {
+      setProjects([]);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }
 
-  usePolling(load);
+  async function loadUsers() {
+    try {
+      const res = await fetch(`${API_URL}/users`);
+      if (res.ok) {
+        const data: UserEntry[] = await res.json();
+        const me = localStorage.getItem("username");
+        setAllUsers(data.filter((u) => u.username !== me));
+      }
+    } catch { /* silent */ }
+  }
 
-  const labelClasses = useMemo(() => {
-    const v = labelClassesRaw.trim();
-    if (!v) return [];
-    return v
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
-  }, [labelClassesRaw]);
+  usePolling(load);
+  useEffect(() => { if (isAdmin) loadUsers(); }, [isAdmin]);
+
+  // re-load when role resolves
+  useEffect(() => {
+    if (role) load();
+  }, [role]);
+
+  async function handleRefresh() {
+    setRefreshing(true);
+    await load();
+  }
+
+  const labelClasses = selectedCategories;
 
   async function onDelete(e: React.MouseEvent, projectId: string) {
     e.preventDefault();
@@ -53,116 +107,317 @@ export default function ProjectsPage() {
     try {
       await deleteProject(projectId);
       setProjects((prev) => prev.filter((p) => p.project_id !== projectId));
-    } catch {
-      alert("Delete failed");
-    }
+      toast.success("Project deleted");
+    } catch { toast.error("Delete failed"); }
   }
 
   async function onCreate() {
     setCreating(true);
     try {
-      const created = await createProject({
-        name,
-        description,
-        label_classes: labelClasses,
-      });
-      setName("");
-      setDescription("");
-      setLabelClassesRaw("");
+      const created = await createProject({ name, description, label_classes: labelClasses });
+      setName(""); setDescription(""); setSelectedCategories([]);
       setProjects((prev) => [created, ...prev]);
-    } finally {
-      setCreating(false);
-    }
+      toast.success("Project created");
+    } catch { toast.error("Failed to create project"); }
+    finally { setCreating(false); }
+  }
+
+  async function handleAssign(projectId: string, username: string) {
+    setAssigning((prev) => ({ ...prev, [`${projectId}-${username}`]: true }));
+    try {
+      await assignUser(projectId, username);
+      setProjects((prev) =>
+        prev.map((p) =>
+          p.project_id === projectId
+            ? { ...p, assigned_users: [...(p.assigned_users || []), username] }
+            : p
+        )
+      );
+      toast.success(`${username} assigned`);
+    } catch { toast.error("Failed to assign user"); }
+    finally { setAssigning((prev) => ({ ...prev, [`${projectId}-${username}`]: false })); }
+  }
+
+  async function handleUnassign(projectId: string, username: string) {
+    setAssigning((prev) => ({ ...prev, [`${projectId}-${username}`]: true }));
+    try {
+      await unassignUser(projectId, username);
+      setProjects((prev) =>
+        prev.map((p) =>
+          p.project_id === projectId
+            ? { ...p, assigned_users: (p.assigned_users || []).filter((u) => u !== username) }
+            : p
+        )
+      );
+      toast.success(`${username} removed`);
+    } catch { toast.error("Failed to remove user"); }
+    finally { setAssigning((prev) => ({ ...prev, [`${projectId}-${username}`]: false })); }
   }
 
   return (
     <div className="relative flex h-screen overflow-hidden bg-zinc-950">
       <MouseTracker />
-
       <div className="relative z-10 flex w-full">
         <Sidebar />
-
         <main className="flex flex-1 flex-col overflow-hidden">
           <Topbar />
-
           <div className="flex-1 overflow-auto p-8">
+
+            {/* Header */}
             <div className="mb-6 flex items-center justify-between gap-4">
               <div>
                 <h1 className="text-3xl font-bold text-white">Projects</h1>
-                <p className="mt-2 text-zinc-400">Manage projects and bulk uploads</p>
+                <p className="mt-1 text-zinc-400">
+                  {isAdmin ? "Create and manage projects, assign team members" : "Your assigned projects"}
+                </p>
               </div>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={handleRefresh}
+                  disabled={refreshing}
+                  className="flex items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-300 hover:border-zinc-600 hover:text-white transition-colors disabled:opacity-50"
+                >
+                  <RefreshCw size={14} className={refreshing ? "animate-spin" : ""} />
+                  Refresh
+                </button>
 
-              <Dialog>
-                <DialogTrigger asChild>
-                  <Button>+ Create project</Button>
-                </DialogTrigger>
-                <DialogContent className="sm:max-w-[520px]">
-                  <DialogHeader>
-                    <DialogTitle>Create Project</DialogTitle>
-                  </DialogHeader>
-
-                  <div className="grid gap-4">
-                    <div className="grid gap-2">
-                      <label className="text-sm text-zinc-300">Name</label>
-                      <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Wheat Study" />
-                    </div>
-                    <div className="grid gap-2">
-                      <label className="text-sm text-zinc-300">Description</label>
-                      <Input
-                        value={description}
-                        onChange={(e) => setDescription(e.target.value)}
-                        placeholder="Short description"
-                      />
-                    </div>
-                    <div className="grid gap-2">
-                      <label className="text-sm text-zinc-300">Label classes (optional, comma separated)</label>
-                      <Input
-                        value={labelClassesRaw}
-                        onChange={(e) => setLabelClassesRaw(e.target.value)}
-                        placeholder="class1, class2"
-                      />
-                    </div>
-
-                    <div className="flex justify-end gap-2 pt-2">
-                      <Button variant="secondary" type="button" onClick={() => { setName(""); setDescription(""); setLabelClassesRaw(""); }}>
-                        Reset
-                      </Button>
-                      <Button disabled={creating || !name.trim() || !description.trim()} onClick={onCreate}>
-                        {creating ? "Creating..." : "Create"}
-                      </Button>
-                    </div>
-                  </div>
-                </DialogContent>
-              </Dialog>
-            </div>
-
-            {loading ? (
-              <div className="mt-10 text-center text-zinc-500">Loading projects...</div>
-            ) : (
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                {projects.map((p) => (
-                  <Link key={p.project_id} href={`/projects/${p.project_id}`}>
-                    <Card className="cursor-pointer p-5 hover:bg-zinc-900/50 transition-colors">
-                      <div className="flex items-start justify-between gap-4">
-                        <div>
-                          <h2 className="text-lg font-semibold text-white">{p.name}</h2>
-                          <p className="mt-2 text-sm text-zinc-400">{p.description}</p>
+                {isAdmin && (
+                  <Dialog>
+                    <DialogTrigger asChild>
+                      <Button>+ Create project</Button>
+                    </DialogTrigger>
+                    <DialogContent className="sm:max-w-[520px]">
+                      <DialogHeader>
+                        <DialogTitle>Create Project</DialogTitle>
+                      </DialogHeader>
+                      <div className="grid gap-4">
+                        <div className="grid gap-2">
+                          <label className="text-sm text-zinc-300">Name</label>
+                          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Wheat Disease Study" />
                         </div>
-                        <div className="flex flex-col items-end gap-2">
-                          <p className="text-xs text-zinc-500">{p.label_classes?.length ? `${p.label_classes.length} labels` : "No labels"}</p>
-                          <Button
-                            variant="destructive"
-                            size="sm"
-                            onClick={(e) => onDelete(e, p.project_id)}
-                          >
-                            Delete
+                        <div className="grid gap-2">
+                          <label className="text-sm text-zinc-300">Description</label>
+                          <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Short description" />
+                        </div>
+
+                        {/* Category selector */}
+                        <div className="grid gap-2">
+                          <label className="text-sm text-zinc-300">Category / Label Classes</label>
+                          <div className="flex flex-wrap gap-2">
+                            {DEFAULT_CATEGORIES.map((cat) => {
+                              const active = selectedCategories.includes(cat);
+                              return (
+                                <button
+                                  key={cat}
+                                  type="button"
+                                  onClick={() => toggleCategory(cat)}
+                                  className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+                                    active
+                                      ? "border-emerald-500/50 bg-emerald-500/15 text-emerald-400"
+                                      : "border-zinc-700 bg-zinc-800 text-zinc-400 hover:border-zinc-600 hover:text-zinc-200"
+                                  }`}
+                                >
+                                  {active && <span className="mr-1">✓</span>}{cat}
+                                </button>
+                              );
+                            })}
+                          </div>
+
+                          {/* Custom categories added */}
+                          {selectedCategories.filter((c) => !DEFAULT_CATEGORIES.includes(c)).length > 0 && (
+                            <div className="flex flex-wrap gap-2 mt-1">
+                              {selectedCategories.filter((c) => !DEFAULT_CATEGORIES.includes(c)).map((cat) => (
+                                <span key={cat} className="flex items-center gap-1 rounded-lg border border-blue-500/30 bg-blue-500/10 px-2.5 py-1 text-xs text-blue-400">
+                                  {cat}
+                                  <button type="button" onClick={() => setSelectedCategories((prev) => prev.filter((c) => c !== cat))}>
+                                    <X size={11} className="hover:text-blue-200" />
+                                  </button>
+                                </span>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* Add custom */}
+                          <div className="flex gap-2 mt-1">
+                            <input
+                              ref={customInputRef}
+                              value={customInput}
+                              onChange={(e) => setCustomInput(e.target.value)}
+                              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addCustomCategory(); } }}
+                              placeholder="Add custom category..."
+                              className="flex-1 rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-xs text-white placeholder-zinc-500 outline-none focus:border-emerald-500/50"
+                            />
+                            <button
+                              type="button"
+                              onClick={addCustomCategory}
+                              disabled={!customInput.trim()}
+                              className="flex items-center gap-1 rounded-lg border border-zinc-700 bg-zinc-800 px-3 text-xs text-zinc-300 hover:border-zinc-600 hover:text-white transition-colors disabled:opacity-40"
+                            >
+                              <Plus size={13} /> Add
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="flex justify-end gap-2 pt-2">
+                          <Button variant="secondary" type="button" onClick={() => { setName(""); setDescription(""); setSelectedCategories([]); setCustomInput(""); }}>
+                            Reset
+                          </Button>
+                          <Button disabled={creating || !name.trim() || !description.trim()} onClick={onCreate}>
+                            {creating ? "Creating..." : "Create"}
                           </Button>
                         </div>
                       </div>
-                      <div className="mt-4 text-sm text-emerald-400">View dashboard →</div>
-                    </Card>
-                  </Link>
-                ))}
+                    </DialogContent>
+                  </Dialog>
+                )}
+              </div>
+            </div>
+
+            {/* Content */}
+            {loading ? (
+              <div className="mt-10 text-center text-zinc-500">Loading projects...</div>
+            ) : projects.length === 0 ? (
+              <div className="mt-16 flex flex-col items-center gap-3 text-center">
+                <div className="flex h-14 w-14 items-center justify-center rounded-full border border-zinc-800 bg-zinc-900">
+                  <FolderOpen size={24} className="text-zinc-600" />
+                </div>
+                <p className="text-zinc-400">
+                  {isAdmin ? "No projects yet. Create one to get started." : "No projects assigned to you yet."}
+                </p>
+                {!isAdmin && (
+                  <p className="text-sm text-zinc-600">Ask your admin to assign you to a project.</p>
+                )}
+              </div>
+            ) : (
+              <div className="flex flex-col gap-4">
+                {projects.map((p) => {
+                  const assignedUsers = p.assigned_users || [];
+                  const isExpanded = expanded[p.project_id] ?? false;
+
+                  return (
+                    <div key={p.project_id} className="rounded-xl border border-zinc-800 bg-zinc-900/60">
+
+                      {/* Project row */}
+                      <div className="flex items-start justify-between gap-4 p-5">
+                        <div className="flex-1 min-w-0">
+                          <h2 className="text-lg font-semibold text-white">{p.name}</h2>
+                          <p className="mt-1 text-sm text-zinc-400">{p.description}</p>
+                          <div className="mt-2 flex flex-wrap items-center gap-2">
+                            {p.label_classes && p.label_classes.length > 0 && p.label_classes.map((lc) => (
+                              <span key={lc} className="rounded-md bg-zinc-800 px-2 py-0.5 text-xs text-zinc-400">{lc}</span>
+                            ))}
+                            {isAdmin && (
+                              <span className="text-xs text-zinc-500">
+                                {assignedUsers.length} user{assignedUsers.length !== 1 ? "s" : ""} assigned
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0">
+                          {/* Non-admin: Upload button */}
+                          {!isAdmin && (
+                            <Link
+                              href={`/projects/${p.project_id}/bulk-upload`}
+                              className="flex items-center gap-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 px-3 py-1.5 text-sm font-medium text-emerald-400 hover:bg-emerald-500/20 transition-colors"
+                            >
+                              <Upload size={14} />
+                              Upload Data
+                            </Link>
+                          )}
+
+                          {/* Admin: View dashboard + Assign Users + Delete */}
+                          {isAdmin && (
+                            <>
+                              <Link
+                                href={`/projects/${p.project_id}`}
+                                className="rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs text-zinc-300 hover:border-zinc-600 hover:text-white transition-colors"
+                              >
+                                View Dashboard
+                              </Link>
+                              <button
+                                onClick={() => setExpanded((prev) => ({ ...prev, [p.project_id]: !isExpanded }))}
+                                className="flex items-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs text-zinc-300 hover:border-zinc-600 hover:text-white transition-colors"
+                              >
+                                {isExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                                Assign Users
+                              </button>
+                              <Button variant="destructive" size="sm" onClick={(e) => onDelete(e, p.project_id)}>
+                                Delete
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Admin assignment panel */}
+                      {isAdmin && isExpanded && (
+                        <div className="border-t border-zinc-800 px-5 pb-5 pt-4">
+                          <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-zinc-500">Team Members</p>
+                          {allUsers.length === 0 ? (
+                            <p className="text-sm text-zinc-500">No other users registered.</p>
+                          ) : (
+                            <table className="w-full text-sm">
+                              <thead>
+                                <tr className="border-b border-zinc-800">
+                                  <th className="pb-2 text-left text-xs font-medium text-zinc-500">Username</th>
+                                  <th className="pb-2 text-left text-xs font-medium text-zinc-500">Role</th>
+                                  <th className="pb-2 text-left text-xs font-medium text-zinc-500">Status</th>
+                                  <th className="pb-2 text-right text-xs font-medium text-zinc-500">Action</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {allUsers.map((u) => {
+                                  const isAssigned = assignedUsers.includes(u.username);
+                                  const isBusy = assigning[`${p.project_id}-${u.username}`];
+                                  return (
+                                    <tr key={u.username} className="border-b border-zinc-800/50 last:border-0">
+                                      <td className="py-2.5 font-medium text-white">{u.username}</td>
+                                      <td className="py-2.5">
+                                        <span className="rounded-md bg-zinc-800 px-2 py-0.5 text-xs capitalize text-zinc-400">{u.role}</span>
+                                      </td>
+                                      <td className="py-2.5">
+                                        {isAssigned ? (
+                                          <span className="flex items-center gap-1 text-xs text-emerald-400">
+                                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                                            Assigned
+                                          </span>
+                                        ) : (
+                                          <span className="text-xs text-zinc-500">Not assigned</span>
+                                        )}
+                                      </td>
+                                      <td className="py-2.5 text-right">
+                                        {isAssigned ? (
+                                          <button
+                                            disabled={isBusy}
+                                            onClick={() => handleUnassign(p.project_id, u.username)}
+                                            className="flex items-center gap-1 ml-auto rounded-lg border border-red-500/30 bg-red-500/10 px-2.5 py-1 text-xs text-red-400 hover:bg-red-500/20 transition-colors disabled:opacity-50"
+                                          >
+                                            <UserMinus size={12} />
+                                            {isBusy ? "Removing..." : "Remove"}
+                                          </button>
+                                        ) : (
+                                          <button
+                                            disabled={isBusy}
+                                            onClick={() => handleAssign(p.project_id, u.username)}
+                                            className="flex items-center gap-1 ml-auto rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs text-emerald-400 hover:bg-emerald-500/20 transition-colors disabled:opacity-50"
+                                          >
+                                            <UserPlus size={12} />
+                                            {isBusy ? "Assigning..." : "Assign"}
+                                          </button>
+                                        )}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -171,4 +426,3 @@ export default function ProjectsPage() {
     </div>
   );
 }
-

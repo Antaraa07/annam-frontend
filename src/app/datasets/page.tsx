@@ -9,10 +9,12 @@ import MouseTracker from "@/components/ui/mouse-tracker";
 import DatasetTable from "@/components/datasets/dataset-table";
 import DatasetDialog from "@/components/datasets/dataset-dialog";
 import SearchFilter from "@/components/datasets/search-filter";
+import DownloadModal from "@/components/datasets/download-modal";
 
 import { getDatasets, deleteDataset } from "@/services/datasets";
 import { Dataset } from "@/types/dataset";
 import { usePolling } from "@/hooks/usePolling";
+import { RefreshCw, Download } from "lucide-react";
 
 export default function DatasetsPage() {
   const [datasets, setDatasets]           = useState<Dataset[]>([]);
@@ -21,7 +23,12 @@ export default function DatasetsPage() {
   const [dialogOpen, setDialogOpen]       = useState(false);
   const [search, setSearch]               = useState("");
   const [owner, setOwner]                 = useState("");
-  const [department, setDepartment]       = useState("");
+  const [category, setCategory]           = useState("");
+  const [label, setLabel]                 = useState("");
+  const [source, setSource]               = useState("");
+
+  const [refreshing, setRefreshing] = useState(false);
+  const [downloadOpen, setDownloadOpen] = useState(false);
 
   async function loadDatasets() {
     try {
@@ -31,18 +38,19 @@ export default function DatasetsPage() {
       console.error(error);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }
 
   usePolling(loadDatasets);
 
+  async function handleRefresh() {
+    setRefreshing(true);
+    await loadDatasets();
+  }
+
   const owners = useMemo(
     () => [...new Set(datasets.map((d) => d.owner))],
-    [datasets]
-  );
-
-  const departments = useMemo(
-    () => [...new Set(datasets.map((d) => d["lab/dept"]))],
     [datasets]
   );
 
@@ -51,16 +59,16 @@ export default function DatasetsPage() {
       const datasetName = dataset.dataset_name ?? "";
       const description = dataset.description ?? "";
       const query = search.toLowerCase();
-
-      const matchesSearch =
-        datasetName.toLowerCase().includes(query) ||
-        description.toLowerCase().includes(query);
-      const matchesOwner = owner === "" || dataset.owner === owner;
-      const matchesDepartment =
-        department === "" || dataset["lab/dept"] === department;
-      return matchesSearch && matchesOwner && matchesDepartment;
+      const matchesSearch   = datasetName.toLowerCase().includes(query) || description.toLowerCase().includes(query);
+      const matchesOwner    = owner === "" || dataset.owner === owner;
+      const matchesCategory = category === "" || dataset["lab/dept"] === category;
+      const matchesLabel    = label === "" || (dataset.label ?? "").toLowerCase().includes(label.toLowerCase());
+      const matchesSource   = source === "" ||
+        (source === "raw" && !dataset.project_id) ||
+        (source === "annotated" && !!dataset.project_id);
+      return matchesSearch && matchesOwner && matchesCategory && matchesLabel && matchesSource;
     }),
-    [datasets, search, owner, department]
+    [datasets, search, owner, category, label, source]
   );
 
   async function handleDelete(dataset: Dataset) {
@@ -68,7 +76,8 @@ export default function DatasetsPage() {
     if (!confirmed) return;
     try {
       if (dataset.image_id) {
-        await deleteDataset(dataset.image_id, "antara");
+        const username = localStorage.getItem("username") || "";
+        await deleteDataset(dataset.image_id, username);
       }
       // Remove from local state regardless (handles undefined image_id entries too)
       setDatasets((prev) => prev.filter((d) => d !== dataset));
@@ -94,18 +103,44 @@ export default function DatasetsPage() {
           <Topbar />
 
           <div className="flex-1 overflow-auto p-8">
-            <h1 className="text-3xl font-bold text-white">Datasets</h1>
-            <p className="mb-8 text-zinc-400">Manage all stored datasets</p>
+            <div className="mb-8 flex items-center justify-between">
+              <div>
+                <h1 className="text-3xl font-bold text-white">Datasets</h1>
+                <p className="text-zinc-400">Manage all stored datasets</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <a
+                  onClick={() => setDownloadOpen(true)}
+                  className={`flex cursor-pointer items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-300 hover:border-emerald-500 hover:text-emerald-400 transition-colors ${
+                    filteredDatasets.length === 0 ? "pointer-events-none opacity-40" : ""
+                  }`}
+                >
+                  <Download size={14} />
+                  Download ({filteredDatasets.length})
+                </a>
+                <button
+                  onClick={handleRefresh}
+                  disabled={refreshing}
+                  className="flex items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-300 hover:border-zinc-600 hover:text-white transition-colors disabled:opacity-50"
+                >
+                  <RefreshCw size={14} className={refreshing ? "animate-spin" : ""} />
+                  Refresh
+                </button>
+              </div>
+            </div>
 
             <SearchFilter
               search={search}
               setSearch={setSearch}
               owner={owner}
               setOwner={setOwner}
-              department={department}
-              setDepartment={setDepartment}
+              category={category}
+              setCategory={setCategory}
+              label={label}
+              setLabel={setLabel}
+              source={source}
+              setSource={setSource}
               owners={owners}
-              departments={departments}
             />
 
             {loading ? (
@@ -124,6 +159,13 @@ export default function DatasetsPage() {
               open={dialogOpen}
               onOpenChange={setDialogOpen}
               dataset={selectedDataset}
+            />
+
+            <DownloadModal
+              open={downloadOpen}
+              onOpenChange={setDownloadOpen}
+              activeFilters={{ category, search, owner, label, source }}
+              count={filteredDatasets.length}
             />
           </div>
         </main>

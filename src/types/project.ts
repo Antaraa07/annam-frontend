@@ -5,5 +5,6 @@ export interface Project {
   owner: string;
   created_at: string;
   label_classes?: string[];
+  assigned_users?: string[];
 }
 
