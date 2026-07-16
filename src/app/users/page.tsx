@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { UserPlus, Trash2, RefreshCw, X, Eye, EyeOff, ShieldCheck, FlaskConical, GraduationCap, Briefcase } from "lucide-react";
+import { UserPlus, Trash2, RefreshCw, X, Eye, EyeOff, ShieldCheck, FlaskConical, GraduationCap, Briefcase, Crown } from "lucide-react";
 
 import MouseTracker from "@/components/ui/mouse-tracker";
 import Sidebar from "@/components/layout/sidebar";
@@ -10,12 +10,13 @@ import { usePolling } from "@/hooks/usePolling";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
-const ROLES = ["admin", "researcher", "student", "intern"] as const;
+const ROLES = ["superadmin", "admin", "researcher", "student", "intern"] as const;
 type Role = typeof ROLES[number];
 
 interface User { username: string; role: Role; }
 
 const ROLE_META: Record<Role, { label: string; color: string; icon: React.ElementType }> = {
+  superadmin: { label: "Superadmin", color: "bg-violet-500/15 text-violet-300 border-violet-500/30", icon: Crown },
   admin:      { label: "Admin",      color: "bg-violet-500/15 text-violet-300 border-violet-500/30",  icon: ShieldCheck },
   researcher: { label: "Researcher", color: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30", icon: FlaskConical },
   student:    { label: "Student",    color: "bg-blue-500/15 text-blue-300 border-blue-500/30",       icon: GraduationCap },

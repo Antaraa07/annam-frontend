@@ -6,5 +6,6 @@ export interface Project {
   created_at: string;
   label_classes?: string[];
   assigned_users?: string[];
+  status?: "not started" | "ongoing" | "completed";
 }
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { RefreshCw, UserPlus, UserMinus, ChevronDown, ChevronUp, Upload, FolderOpen, Plus, X } from "lucide-react";
+import { RefreshCw, UserPlus, UserMinus, ChevronDown, ChevronUp, Upload, FolderOpen, Plus, X, Download, Loader2 } from "lucide-react";
 import Link from "next/link";
 
 import Sidebar from "@/components/layout/sidebar";
@@ -13,6 +13,8 @@ import {
   createProject, deleteProject,
   listMyProjects, listAssignedProjects,
   assignUser, unassignUser,
+  updateProjectStatus,
+  bulkDownloadFromProject
 } from "@/services/projects";
 
 import { Button } from "@/components/ui/button";
@@ -20,6 +22,7 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { usePolling } from "@/hooks/usePolling";
 import { toast } from "sonner";
+import { downloadBlob } from "@/utils/download";
 
 interface UserEntry { username: string; role: string; }
 
@@ -31,6 +34,7 @@ export default function ProjectsPage() {
   const [allUsers, setAllUsers] = useState<UserEntry[]>([]);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [assigning, setAssigning] = useState<Record<string, boolean>>({});
+  const [downloading, setDownloading] = useState<Record<string, boolean>>({});
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -56,7 +60,8 @@ export default function ProjectsPage() {
   }
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-  const isAdmin = role === "admin";
+  const isSuperadmin = role === "superadmin";
+  const isAdmin = role === "admin" || isSuperadmin;
 
   useEffect(() => {
     setRole(localStorage.getItem("role") || "");
@@ -65,7 +70,15 @@ export default function ProjectsPage() {
   async function load() {
     try {
       setLoading(true);
-      const data = isAdmin ? await listMyProjects() : await listAssignedProjects();
+      const curUsername = localStorage.getItem("username") || "";
+      if ((role === "admin" || isSuperadmin) && curUsername) {
+        try {
+          await fetch(`${API_URL}/projects/clean-orphans?username=${curUsername}`, { method: "POST" });
+        } catch (e) {
+          console.error("Clean orphans error:", e);
+        }
+      }
+      const data = isSuperadmin || role === "admin" ? await listMyProjects() : await listAssignedProjects();
       setProjects(data);
     } catch {
       setProjects([]);
@@ -81,13 +94,14 @@ export default function ProjectsPage() {
       if (res.ok) {
         const data: UserEntry[] = await res.json();
         const me = localStorage.getItem("username");
-        setAllUsers(data.filter((u) => u.username !== me));
+        // Remove self and superadmins from the assignable users list
+        setAllUsers(data.filter((u) => u.username !== me && u.role !== "superadmin"));
       }
     } catch { /* silent */ }
   }
 
   usePolling(load);
-  useEffect(() => { if (isAdmin) loadUsers(); }, [isAdmin]);
+  useEffect(() => { if (role === "admin" || isSuperadmin) loadUsers(); }, [role, isSuperadmin]);
 
   // re-load when role resolves
   useEffect(() => {
@@ -101,12 +115,13 @@ export default function ProjectsPage() {
 
   const labelClasses = selectedCategories;
 
-  async function onDelete(e: React.MouseEvent, projectId: string) {
+  async function onDelete(e: React.MouseEvent, p: Project) {
     e.preventDefault();
-    if (!window.confirm("Delete this project?")) return;
+    if (!window.confirm(`Are you sure you want to delete project "${p.name}"?`)) return;
+    if (!window.confirm(`WARNING: Deleting project "${p.name}" will permanently erase all associated uploaded files and database records. This cannot be undone. Confirm deletion?`)) return;
     try {
-      await deleteProject(projectId);
-      setProjects((prev) => prev.filter((p) => p.project_id !== projectId));
+      await deleteProject(p.project_id);
+      setProjects((prev) => prev.filter((proj) => proj.project_id !== p.project_id));
       toast.success("Project deleted");
     } catch { toast.error("Delete failed"); }
   }
@@ -154,6 +169,49 @@ export default function ProjectsPage() {
     finally { setAssigning((prev) => ({ ...prev, [`${projectId}-${username}`]: false })); }
   }
 
+  async function handleStatusChange(projectId: string, status: string) {
+    try {
+      await updateProjectStatus(projectId, status);
+      setProjects((prev) =>
+        prev.map((p) => p.project_id === projectId ? { ...p, status: status as any } : p)
+      );
+      toast.success("Project status updated");
+    } catch {
+      toast.error("Failed to update status");
+    }
+  }
+
+  async function handleBulkDownload(projectId: string) {
+    setDownloading((prev) => ({ ...prev, [projectId]: true }));
+    try {
+      const blob = await bulkDownloadFromProject(projectId);
+      if (!blob) {
+        toast.error("This project does not contain any uploaded files.");
+        return;
+      }
+      downloadBlob(blob, `project_${projectId}.zip`);
+      toast.success("Download started");
+    } catch (e) {
+      console.error(e);
+      toast.error("Download failed");
+    } finally {
+      setDownloading((prev) => ({ ...prev, [projectId]: false }));
+    }
+  }
+
+  function getStatusColor(status?: string) {
+    switch (status) {
+      case "completed": return "border-emerald-500/30 bg-emerald-500/10 text-emerald-400";
+      case "ongoing": return "border-amber-500/30 bg-amber-500/10 text-amber-400";
+      default: return "border-zinc-700 bg-zinc-800 text-zinc-400";
+    }
+  }
+
+  function formatDate(iso?: string | null) {
+    if (!iso) return "—";
+    return new Date(iso).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+  }
+
   return (
     <div className="relative flex h-screen overflow-hidden bg-zinc-950">
       <MouseTracker />
@@ -168,7 +226,11 @@ export default function ProjectsPage() {
               <div>
                 <h1 className="text-3xl font-bold text-white">Projects</h1>
                 <p className="mt-1 text-zinc-400">
-                  {isAdmin ? "Create and manage projects, assign team members" : "Your assigned projects"}
+                  {isSuperadmin 
+                    ? "Monitor projects and extract bulk training data packages." 
+                    : role === "admin" 
+                    ? "Create and manage projects, assign team members." 
+                    : "Your assigned projects"}
                 </p>
               </div>
               <div className="flex items-center gap-3">
@@ -181,7 +243,7 @@ export default function ProjectsPage() {
                   Refresh
                 </button>
 
-                {isAdmin && (
+                {role === "admin" && (
                   <Dialog>
                     <DialogTrigger asChild>
                       <Button>+ Create project</Button>
@@ -281,17 +343,64 @@ export default function ProjectsPage() {
                 <div className="flex h-14 w-14 items-center justify-center rounded-full border border-zinc-800 bg-zinc-900">
                   <FolderOpen size={24} className="text-zinc-600" />
                 </div>
-                <p className="text-zinc-400">
-                  {isAdmin ? "No projects yet. Create one to get started." : "No projects assigned to you yet."}
-                </p>
-                {!isAdmin && (
-                  <p className="text-sm text-zinc-600">Ask your admin to assign you to a project.</p>
-                )}
+                <p className="text-zinc-400">No projects recorded yet.</p>
+              </div>
+            ) : isSuperadmin ? (
+              /* SUPERADMIN EXTRACTION TABLE */
+              <div className="overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/60 shadow-xl">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-zinc-800 bg-zinc-900 text-left text-zinc-400">
+                      <th className="px-5 py-3.5 text-xs font-semibold uppercase tracking-wider">Project Name</th>
+                      <th className="px-5 py-3.5 text-xs font-semibold uppercase tracking-wider">Description</th>
+                      <th className="px-5 py-3.5 text-xs font-semibold uppercase tracking-wider">Owner (Admin)</th>
+                      <th className="px-5 py-3.5 text-xs font-semibold uppercase tracking-wider">Status</th>
+                      <th className="px-5 py-3.5 text-xs font-semibold uppercase tracking-wider">Date Created</th>
+                      <th className="px-5 py-3.5 text-right text-xs font-semibold uppercase tracking-wider">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {projects.map((p) => (
+                      <tr key={p.project_id} className="border-b border-zinc-800/60 last:border-0 hover:bg-zinc-800/25 transition-colors">
+                        <td className="px-5 py-4 font-semibold text-white">{p.name}</td>
+                        <td className="px-5 py-4 text-zinc-400 max-w-xs truncate">{p.description}</td>
+                        <td className="px-5 py-4 text-zinc-300">{p.owner}</td>
+                        <td className="px-5 py-4">
+                          <span className={`inline-block rounded-full border px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wider ${getStatusColor(p.status)}`}>
+                            {p.status || "not started"}
+                          </span>
+                        </td>
+                        <td className="px-5 py-4 text-zinc-500">{formatDate(p.created_at)}</td>
+                        <td className="px-5 py-4 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <Link
+                              href={`/projects/${p.project_id}`}
+                              className="rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs text-zinc-300 hover:border-zinc-600 hover:text-white transition-colors"
+                            >
+                              View Dashboard
+                            </Link>
+                            <button
+                              onClick={() => handleBulkDownload(p.project_id)}
+                              disabled={downloading[p.project_id]}
+                              className="inline-flex items-center gap-1.5 rounded-lg bg-blue-500/10 border border-blue-500/20 px-3 py-1.5 text-xs font-semibold text-blue-400 hover:bg-blue-500/20 transition-colors disabled:opacity-40"
+                            >
+                              {downloading[p.project_id] ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+                              Extract Data
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             ) : (
               <div className="flex flex-col gap-4">
                 {projects.map((p) => {
                   const assignedUsers = p.assigned_users || [];
+                  const visibleAssignedCount = assignedUsers.filter((username) =>
+                    allUsers.some((u) => u.username === username)
+                  ).length;
                   const isExpanded = expanded[p.project_id] ?? false;
 
                   return (
@@ -300,23 +409,44 @@ export default function ProjectsPage() {
                       {/* Project row */}
                       <div className="flex items-start justify-between gap-4 p-5">
                         <div className="flex-1 min-w-0">
-                          <h2 className="text-lg font-semibold text-white">{p.name}</h2>
+                          <div className="flex items-center gap-3">
+                            <h2 className="text-lg font-semibold text-white">{p.name}</h2>
+                            <span className={`rounded-full border px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${getStatusColor(p.status)}`}>
+                              {p.status || "not started"}
+                            </span>
+                          </div>
                           <p className="mt-1 text-sm text-zinc-400">{p.description}</p>
-                          <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <div className="mt-2.5 flex flex-wrap items-center gap-2">
                             {p.label_classes && p.label_classes.length > 0 && p.label_classes.map((lc) => (
                               <span key={lc} className="rounded-md bg-zinc-800 px-2 py-0.5 text-xs text-zinc-400">{lc}</span>
                             ))}
-                            {isAdmin && (
+                            {role === "admin" && (
                               <span className="text-xs text-zinc-500">
-                                {assignedUsers.length} user{assignedUsers.length !== 1 ? "s" : ""} assigned
+                                {visibleAssignedCount} user{visibleAssignedCount !== 1 ? "s" : ""} assigned
                               </span>
                             )}
                           </div>
                         </div>
 
                         <div className="flex items-center gap-2 shrink-0">
-                          {/* Non-admin: Upload button */}
-                          {!isAdmin && (
+                          {/* Admin only status dropdown */}
+                          {role === "admin" && (
+                            <div className="flex items-center gap-1.5 mr-2">
+                              <span className="text-xs text-zinc-500">Status:</span>
+                              <select
+                                value={p.status || "not started"}
+                                onChange={(e) => handleStatusChange(p.project_id, e.target.value)}
+                                className="rounded-lg border border-zinc-700 bg-zinc-800 px-2.5 py-1.5 text-xs text-white outline-none focus:border-emerald-500"
+                              >
+                                <option value="not started">Not Started</option>
+                                <option value="ongoing">Ongoing</option>
+                                <option value="completed">Completed</option>
+                              </select>
+                            </div>
+                          )}
+
+                          {/* Non-admin / Intern: Upload button */}
+                          {role !== "admin" && (
                             <Link
                               href={`/projects/${p.project_id}/bulk-upload`}
                               className="flex items-center gap-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 px-3 py-1.5 text-sm font-medium text-emerald-400 hover:bg-emerald-500/20 transition-colors"
@@ -326,15 +456,17 @@ export default function ProjectsPage() {
                             </Link>
                           )}
 
-                          {/* Admin: View dashboard + Assign Users + Delete */}
-                          {isAdmin && (
+                          {/* View dashboard */}
+                          <Link
+                            href={`/projects/${p.project_id}`}
+                            className="rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs text-zinc-300 hover:border-zinc-600 hover:text-white transition-colors"
+                          >
+                            View Dashboard
+                          </Link>
+
+                          {/* Admin actions: Assign Users + Delete */}
+                          {role === "admin" && (
                             <>
-                              <Link
-                                href={`/projects/${p.project_id}`}
-                                className="rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs text-zinc-300 hover:border-zinc-600 hover:text-white transition-colors"
-                              >
-                                View Dashboard
-                              </Link>
                               <button
                                 onClick={() => setExpanded((prev) => ({ ...prev, [p.project_id]: !isExpanded }))}
                                 className="flex items-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs text-zinc-300 hover:border-zinc-600 hover:text-white transition-colors"
@@ -342,7 +474,7 @@ export default function ProjectsPage() {
                                 {isExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
                                 Assign Users
                               </button>
-                              <Button variant="destructive" size="sm" onClick={(e) => onDelete(e, p.project_id)}>
+                              <Button variant="destructive" size="sm" onClick={(e) => onDelete(e, p)}>
                                 Delete
                               </Button>
                             </>
@@ -351,7 +483,7 @@ export default function ProjectsPage() {
                       </div>
 
                       {/* Admin assignment panel */}
-                      {isAdmin && isExpanded && (
+                      {role === "admin" && isExpanded && (
                         <div className="border-t border-zinc-800 px-5 pb-5 pt-4">
                           <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-zinc-500">Team Members</p>
                           {allUsers.length === 0 ? (

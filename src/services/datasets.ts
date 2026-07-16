@@ -10,7 +10,9 @@ const MOCK_DATASETS: Dataset[] = [];
 export async function getDatasets(): Promise<Dataset[]> {
   try {
     const username = typeof window !== "undefined" ? localStorage.getItem("username") : null;
-    const url = username ? `${API_URL}/datasets?username=${username}` : `${API_URL}/datasets`;
+    const role = typeof window !== "undefined" ? localStorage.getItem("role") : null;
+    const isAdmin = role === "admin" || role === "superadmin";
+    const url = username && !isAdmin ? `${API_URL}/datasets?username=${username}` : `${API_URL}/datasets`;
     const response = await fetch(url);
 
     if (!response.ok) {

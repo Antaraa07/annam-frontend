@@ -84,13 +84,9 @@ export async function getProjectStats(projectId: string): Promise<{
 export async function bulkUploadToProject(params: {
   projectId: string;
   files: File[];
-  label?: string;
-  csvFile?: File;
 }) {
   const form = new FormData();
   params.files.forEach((f) => form.append("files", f));
-  if (params.label !== undefined) form.append("label", params.label);
-  if (params.csvFile) form.append("csv_file", params.csvFile);
   form.append("username", getUsername());
 
   const res = await fetch(
@@ -101,10 +97,20 @@ export async function bulkUploadToProject(params: {
   return res.json() as Promise<{ uploaded_count: number; files: string[] }>;
 }
 
-export async function bulkDownloadFromProject(projectId: string): Promise<Blob> {
+export async function updateProjectStatus(projectId: string, status: string) {
+  const res = await fetch(
+    `${API_URL}/projects/${encodeURIComponent(projectId)}/status?status=${encodeURIComponent(status)}&username=${encodeURIComponent(getUsername())}`,
+    { method: "PATCH" }
+  );
+  if (!res.ok) throw new Error("Failed to update project status");
+  return res.json() as Promise<Project>;
+}
+
+export async function bulkDownloadFromProject(projectId: string): Promise<Blob | null> {
   const res = await fetch(
     `${API_URL}/projects/${encodeURIComponent(projectId)}/bulk-download?username=${getUsername()}`
   );
+  if (res.status === 404) return null;
   if (!res.ok) throw new Error(`Failed to download: ${res.status}`);
   return res.blob();
 }

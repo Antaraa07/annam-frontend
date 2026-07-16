@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { usePathname } from "next/navigation";
 
 const PAGE_TITLES: Record<string, string> = {
@@ -11,18 +11,15 @@ const PAGE_TITLES: Record<string, string> = {
   "/users": "Users",
   "/projects": "Projects",
   "/settings": "Settings",
+  "/superadmin": "Command Center",
 };
 
 export default function Topbar() {
   const pathname = usePathname();
-  const [user, setUser] = useState({ username: "", role: "" });
-
-  useEffect(() => {
-    setUser({
-      username: localStorage.getItem("username") || "",
-      role: localStorage.getItem("role") || "",
-    });
-  }, []);
+  const [user] = useState(() => ({
+    username: typeof window === "undefined" ? "" : localStorage.getItem("username") || "",
+    role: typeof window === "undefined" ? "" : localStorage.getItem("role") || "",
+  }));
 
   const title = PAGE_TITLES[pathname] ?? "ANNAM";
 

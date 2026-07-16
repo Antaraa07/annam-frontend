@@ -1,44 +1,52 @@
 "use client";
 
-import { useState, useRef, DragEvent, useEffect } from "react";
+import { useState, useRef, DragEvent } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
-  UploadCloud, User, Database, Users, Tag,
-  FileText, Shield, FolderOpen, Info, FileIcon, Folder, X,
+  UploadCloud, UserRoundCheck, Database, Tag,
+  FileText, FileCheck2, Shield, Info, FileIcon, Folder, X,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { uploadDataset } from "@/services/upload";
+import { UploadMetadata, UploadMetadataDialog } from "./upload-metadata-dialog";
 
-const CATEGORIES = ["Disease", "Pest", "Damage", "Disease Damage", "Healthy", "Other"];
+const CATEGORIES = ["Healthy", "Disease", "Pest", "Disease Damage", "Pest Damage", "Damage"];
 
 export default function UploadForm() {
   const [loading, setLoading] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
   const [dragging, setDragging] = useState(false);
-  const [descLength, setDescLength] = useState(0);
+  const [metadata, setMetadata] = useState<UploadMetadata | null>(null);
+  const [metadataDialogOpen, setMetadataDialogOpen] = useState(false);
   const [progress, setProgress] = useState({ done: 0, total: 0 });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
 
-  const [form, setForm] = useState({
-    username: "",
+  const [form, setForm] = useState(() => ({
+    uploader: typeof window === "undefined" ? "" : localStorage.getItem("username") || "",
     dataset_name: "",
-    owner: "",
     lab_dept: "",
     version: "",
     description: "",
-  });
-
-  useEffect(() => {
-    const username = localStorage.getItem("username") || "";
-    setForm((prev) => ({ ...prev, username, owner: username }));
-  }, []);
+  }));
 
   function handleField(key: keyof typeof form, value: string) {
-    if (key === "description") setDescLength(value.length);
     setForm({ ...form, [key]: value });
+  }
+
+  function handleCategoryChange(category: string) {
+    handleField("lab_dept", category);
+    setMetadata(null);
+  }
+
+  function openMetadataDialog() {
+    if (!form.lab_dept) {
+      toast.error("Select a category before adding metadata.");
+      return;
+    }
+    setMetadataDialogOpen(true);
   }
 
   function addFiles(incoming: FileList | null) {
@@ -60,6 +68,8 @@ export default function UploadForm() {
     e.preventDefault();
     if (!files.length) { toast.error("Select at least one image or a folder."); return; }
     if (!form.dataset_name.trim()) { toast.error("Enter a dataset name."); return; }
+    if (!form.lab_dept) { toast.error("Select a category before uploading."); return; }
+    if (!metadata) { toast.error("Save category metadata before uploading."); return; }
 
     setLoading(true);
     setProgress({ done: 0, total: files.length });
@@ -68,12 +78,13 @@ export default function UploadForm() {
     for (let i = 0; i < files.length; i++) {
       try {
         const data = new FormData();
-        data.append("username", form.username);
+        data.append("username", form.uploader);
         data.append("dataset_name", form.dataset_name);
-        data.append("owner", form.owner);
+        data.append("owner", form.uploader);
         data.append("lab_dept", form.lab_dept);
         data.append("version", form.version || "v1.0");
         data.append("description", form.description);
+        data.append("metadata_json", JSON.stringify(metadata));
         data.append("file", files[i]);
         await uploadDataset(data);
         setProgress({ done: i + 1, total: files.length });
@@ -92,9 +103,9 @@ export default function UploadForm() {
     }
 
     const username = localStorage.getItem("username") || "";
-    setForm({ username, dataset_name: "", owner: username, lab_dept: "", version: "", description: "" });
+    setForm({ uploader: username, dataset_name: "", lab_dept: "", version: "", description: "" });
     setFiles([]);
-    setDescLength(0);
+    setMetadata(null);
     setTimeout(() => router.push("/datasets"), 800);
   }
 
@@ -125,48 +136,46 @@ export default function UploadForm() {
       <form onSubmit={handleSubmit} className="flex flex-col gap-3">
         <div className="rounded-xl border border-zinc-800 bg-zinc-900/80 px-5 py-4">
 
-          {/* Fields */}
-          <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-            <div>
-              <label className={labelClass}><User size={12} className="text-emerald-400" />Username</label>
-              <input value={form.username} readOnly className={`${inputClass} cursor-not-allowed opacity-60`} />
-            </div>
-            <div>
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(300px,0.9fr)]">
+            <section className="space-y-3">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-zinc-500">Dataset details</p>
+              <div>
               <label className={labelClass}><Database size={12} className="text-emerald-400" />Dataset Name</label>
               <input placeholder="Enter dataset name" value={form.dataset_name}
                 onChange={(e) => handleField("dataset_name", e.target.value)} className={inputClass} />
-            </div>
-            <div>
-              <label className={labelClass}><Users size={12} className="text-emerald-400" />Owner</label>
-              <input value={form.owner} readOnly className={`${inputClass} cursor-not-allowed opacity-60`} />
-            </div>
-            <div>
-              <label className={labelClass}><Tag size={12} className="text-emerald-400" />Category</label>
-              <select
-                value={form.lab_dept}
-                onChange={(e) => handleField("lab_dept", e.target.value)}
-                className={inputClass}
-              >
-                <option value="">Select category...</option>
-                {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-              </select>
-            </div>
-            <div>
+              </div>
+              <div>
               <label className={labelClass}><Tag size={12} className="text-emerald-400" />Version</label>
               <input placeholder="e.g., v1.0" value={form.version}
                 onChange={(e) => handleField("version", e.target.value)} className={inputClass} />
-            </div>
-          </div>
+              </div>
+              <div>
+                <label className={labelClass}><Tag size={12} className="text-emerald-400" />Category</label>
+                <select value={form.lab_dept} onChange={(e) => handleCategoryChange(e.target.value)} className={inputClass}>
+                  <option value="">Select category...</option>
+                  {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+            </section>
 
-          {/* Description */}
-          <div className="mt-3">
-            <label className={labelClass}><FileText size={12} className="text-emerald-400" />Description</label>
-            <div className="relative">
-              <textarea placeholder="Enter dataset description..." rows={2} maxLength={500}
-                value={form.description} onChange={(e) => handleField("description", e.target.value)}
-                className={`${inputClass} resize-none`} />
-              <span className="absolute bottom-2 right-3 text-[10px] text-zinc-600">{descLength} / 500</span>
+          {/* Metadata */}
+          <section className="max-h-44 overflow-y-auto rounded-xl border border-zinc-800 bg-zinc-950/35 p-3 [scrollbar-color:#3f3f46_transparent]">
+            <div className="flex items-center justify-between gap-3">
+              <label className="flex items-center gap-1.5 text-xs font-medium text-zinc-300"><FileText size={12} className="text-emerald-400" />Metadata</label>
+              <span className="text-[10px] text-zinc-500">Applied to this batch</span>
             </div>
+            <div className="mb-2 flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950/40 px-3 py-2 text-[11px] text-zinc-400">
+              <UserRoundCheck size={13} className="shrink-0 text-emerald-400" />
+              <span>Uploader: <span className="font-medium text-zinc-200">{form.uploader || "Signed-in account"}</span> · assigned automatically</span>
+            </div>
+            <button type="button" onClick={openMetadataDialog} className={`${inputClass} flex items-center justify-between text-left hover:border-emerald-500/50 ${metadata ? "border-emerald-500/35 bg-emerald-500/5" : ""}`}>
+              <span className={metadata ? "flex items-center gap-2 text-zinc-100" : "text-zinc-500"}>
+                {metadata && <FileCheck2 size={15} className="shrink-0 text-emerald-400" />}
+                {metadata ? `${form.lab_dept} metadata saved` : "Add category metadata..."}
+              </span>
+              {metadata ? <span className="rounded border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-300">Saved · Edit</span> : <span className="text-xs font-medium text-emerald-400">Add</span>}
+            </button>
+          </section>
           </div>
 
           {/* Drop zone */}
@@ -181,7 +190,7 @@ export default function UploadForm() {
             >
               <UploadCloud size={22} className="mb-2 text-emerald-400" />
               <p className="text-sm font-semibold text-white">Drag & drop images or a folder here</p>
-              <p className="mt-1 text-[10px] text-zinc-500">JPG, PNG, TIFF, BMP, WebP</p>
+              <p className="mt-1 text-[10px] text-zinc-500">JPG, PNG, TIFF, BMP, WebP · metadata applies to every file in this batch</p>
               <div className="mt-3 flex gap-2">
                 <button type="button" onClick={() => fileInputRef.current?.click()}
                   className="flex items-center gap-1.5 rounded-lg border border-zinc-600 bg-zinc-800 px-3 py-1.5 text-xs text-white hover:border-emerald-500/50 hover:bg-zinc-700 transition">
@@ -196,7 +205,7 @@ export default function UploadForm() {
               <input ref={fileInputRef} type="file" multiple accept="image/*" className="hidden"
                 onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} />
               <input ref={folderInputRef} type="file" className="hidden"
-                // @ts-ignore
+                // @ts-expect-error - non-standard directory picker attributes are supported by Chromium browsers.
                 webkitdirectory="true" mozdirectory="true" multiple
                 onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} />
             </div>
@@ -267,6 +276,14 @@ export default function UploadForm() {
           </motion.button>
         </div>
       </form>
+      <UploadMetadataDialog
+        key={`${form.lab_dept}-${metadata ? JSON.stringify(metadata) : "new"}-${metadataDialogOpen}`}
+        category={form.lab_dept}
+        initialMetadata={metadata}
+        open={metadataDialogOpen}
+        onOpenChange={setMetadataDialogOpen}
+        onSave={setMetadata}
+      />
     </div>
   );
 }

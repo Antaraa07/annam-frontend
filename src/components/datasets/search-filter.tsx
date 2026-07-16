@@ -11,10 +11,6 @@ interface Props {
   setOwner: (v: string) => void;
   category: string;
   setCategory: (v: string) => void;
-  label: string;
-  setLabel: (v: string) => void;
-  source: string;
-  setSource: (v: string) => void;
   owners: string[];
 }
 
@@ -22,23 +18,14 @@ export default function SearchFilter({
   search, setSearch,
   owner, setOwner,
   category, setCategory,
-  label, setLabel,
-  source, setSource,
   owners,
 }: Props) {
   return (
-    <div className="mb-6 grid gap-3 md:grid-cols-5">
+    <div className="mb-6 grid gap-3 md:grid-cols-3">
       <Input
         placeholder="Search datasets…"
         value={search}
         onChange={(e) => setSearch(e.target.value)}
-        className="border-zinc-800 bg-zinc-900 text-white placeholder-zinc-600"
-      />
-
-      <Input
-        placeholder="Filter by label…"
-        value={label}
-        onChange={(e) => setLabel(e.target.value)}
         className="border-zinc-800 bg-zinc-900 text-white placeholder-zinc-600"
       />
 
@@ -58,16 +45,6 @@ export default function SearchFilter({
       >
         <option value="">All Categories</option>
         {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-      </select>
-
-      <select
-        value={source}
-        onChange={(e) => setSource(e.target.value)}
-        className="rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-white outline-none focus:border-emerald-500"
-      >
-        <option value="">All Sources</option>
-        <option value="raw">Raw Upload</option>
-        <option value="annotated">Annotated (Project)</option>
       </select>
     </div>
   );

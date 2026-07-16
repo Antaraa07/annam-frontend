@@ -10,4 +10,5 @@ export interface Dataset {
   project_name?: string;
   label?: string;
   timestamp?: string;
+  original_filename?: string;
 }

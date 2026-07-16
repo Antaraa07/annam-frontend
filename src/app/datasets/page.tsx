@@ -24,8 +24,6 @@ export default function DatasetsPage() {
   const [search, setSearch]               = useState("");
   const [owner, setOwner]                 = useState("");
   const [category, setCategory]           = useState("");
-  const [label, setLabel]                 = useState("");
-  const [source, setSource]               = useState("");
 
   const [refreshing, setRefreshing] = useState(false);
   const [downloadOpen, setDownloadOpen] = useState(false);
@@ -50,25 +48,24 @@ export default function DatasetsPage() {
   }
 
   const owners = useMemo(
-    () => [...new Set(datasets.map((d) => d.owner))],
+    () => [...new Set(datasets.filter(d => !d.project_id).map((d) => d.owner))],
     [datasets]
   );
 
   const filteredDatasets = useMemo(() =>
     datasets.filter((dataset) => {
+      // 1. Exclude any project/annotated data - raw only!
+      if (dataset.project_id) return false;
+
       const datasetName = dataset.dataset_name ?? "";
       const description = dataset.description ?? "";
       const query = search.toLowerCase();
       const matchesSearch   = datasetName.toLowerCase().includes(query) || description.toLowerCase().includes(query);
       const matchesOwner    = owner === "" || dataset.owner === owner;
       const matchesCategory = category === "" || dataset["lab/dept"] === category;
-      const matchesLabel    = label === "" || (dataset.label ?? "").toLowerCase().includes(label.toLowerCase());
-      const matchesSource   = source === "" ||
-        (source === "raw" && !dataset.project_id) ||
-        (source === "annotated" && !!dataset.project_id);
-      return matchesSearch && matchesOwner && matchesCategory && matchesLabel && matchesSource;
+      return matchesSearch && matchesOwner && matchesCategory;
     }),
-    [datasets, search, owner, category, label, source]
+    [datasets, search, owner, category]
   );
 
   async function handleDelete(dataset: Dataset) {
@@ -79,7 +76,6 @@ export default function DatasetsPage() {
         const username = localStorage.getItem("username") || "";
         await deleteDataset(dataset.image_id, username);
       }
-      // Remove from local state regardless (handles undefined image_id entries too)
       setDatasets((prev) => prev.filter((d) => d !== dataset));
     } catch (error) {
       console.error(error);
@@ -106,7 +102,7 @@ export default function DatasetsPage() {
             <div className="mb-8 flex items-center justify-between">
               <div>
                 <h1 className="text-3xl font-bold text-white">Datasets</h1>
-                <p className="text-zinc-400">Manage all stored datasets</p>
+                <p className="text-zinc-400">Manage all stored raw datasets</p>
               </div>
               <div className="flex items-center gap-2">
                 <a
@@ -136,10 +132,6 @@ export default function DatasetsPage() {
               setOwner={setOwner}
               category={category}
               setCategory={setCategory}
-              label={label}
-              setLabel={setLabel}
-              source={source}
-              setSource={setSource}
               owners={owners}
             />
 
@@ -164,7 +156,7 @@ export default function DatasetsPage() {
             <DownloadModal
               open={downloadOpen}
               onOpenChange={setDownloadOpen}
-              activeFilters={{ category, search, owner, label, source }}
+              activeFilters={{ category, search, owner, label: "", source: "raw" }}
               count={filteredDatasets.length}
             />
           </div>

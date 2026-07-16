@@ -1,10 +1,11 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 import { MOCK_DATA, mockApiCall } from './mock-api';
 
-export async function getSummary() {
+export async function getSummary(username?: string) {
   try {
+    const params = username ? `?username=${encodeURIComponent(username)}` : "";
     const response = await fetch(
-      `${API_URL}/analytics/summary`
+      `${API_URL}/analytics/summary${params}`
     );
 
     if (!response.ok)
@@ -33,10 +34,11 @@ export async function getOwners() {
   }
 }
 
-export async function getDepartments() {
+export async function getDepartments(username?: string) {
   try {
+    const params = username ? `?username=${encodeURIComponent(username)}` : "";
     const response = await fetch(
-      `${API_URL}/analytics/departments`
+      `${API_URL}/analytics/departments${params}`
     );
 
     if (!response.ok)

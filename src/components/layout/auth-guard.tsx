@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 
 const ADMIN_ONLY_PATHS = ["/users"];
+const SUPERADMIN_ONLY_PATHS = ["/superadmin"];
 
 export default function AuthGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -25,7 +26,15 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
     }
 
     const isAdminOnly = ADMIN_ONLY_PATHS.some((p) => pathname.startsWith(p));
-    if (isAdminOnly && role !== "admin") {
+    const hasAdminAccess = role === "admin" || role === "superadmin";
+    const isSuperadminOnly = SUPERADMIN_ONLY_PATHS.some((p) => pathname.startsWith(p));
+
+    if (isSuperadminOnly && role !== "superadmin") {
+      router.push("/");
+      return;
+    }
+
+    if (isAdminOnly && !hasAdminAccess) {
       router.push("/");
       return;
     }

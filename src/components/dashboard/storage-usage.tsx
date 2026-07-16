@@ -99,7 +99,7 @@ export default function StorageUsage({
 
           <div className="space-y-3">
             <p className="text-sm font-medium text-zinc-300">
-              Breakdown (top depts)
+              Storage breakdown
             </p>
             {data.breakdown.length === 0 ? (
               <p className="text-zinc-500">No breakdown available.</p>
