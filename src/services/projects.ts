@@ -73,6 +73,7 @@ export async function unassignUser(projectId: string, assignUsername: string) {
 export async function getProjectStats(projectId: string): Promise<{
   total_images: number;
   recent_uploads: Dataset[];
+  label_counts?: Record<string, number>;
 }> {
   const res = await fetch(
     `${API_URL}/projects/${encodeURIComponent(projectId)}/stats?username=${getUsername()}`
@@ -115,10 +116,13 @@ export async function bulkDownloadFromProject(projectId: string): Promise<Blob |
   return res.blob();
 }
 
-export async function getProjectImages(projectId: string): Promise<Dataset[]> {
-  const res = await fetch(
-    `${API_URL}/projects/${encodeURIComponent(projectId)}/images?username=${getUsername()}`
-  );
+export async function getProjectImages(projectId: string, page?: number, limit?: number): Promise<Dataset[]> {
+  const url = new URL(`${API_URL}/projects/${encodeURIComponent(projectId)}/images`);
+  url.searchParams.append("username", getUsername());
+  if (page !== undefined) url.searchParams.append("page", String(page));
+  if (limit !== undefined) url.searchParams.append("limit", String(limit));
+
+  const res = await fetch(url.toString());
   if (!res.ok) throw new Error("Failed to load project images");
   return res.json();
 }
