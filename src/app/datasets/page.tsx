@@ -52,6 +52,11 @@ export default function DatasetsPage() {
     [datasets]
   );
 
+  const datasetNames = useMemo(
+    () => [...new Set(datasets.filter(d => !d.project_id && d.dataset_name).map((d) => d.dataset_name))],
+    [datasets]
+  );
+
   const filteredDatasets = useMemo(() =>
     datasets.filter((dataset) => {
       // 1. Exclude any project/annotated data - raw only!
@@ -158,6 +163,7 @@ export default function DatasetsPage() {
               onOpenChange={setDownloadOpen}
               activeFilters={{ category, search, owner, label: "", source: "raw" }}
               count={filteredDatasets.length}
+              datasetNames={datasetNames}
             />
           </div>
         </main>

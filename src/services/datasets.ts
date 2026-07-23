@@ -75,6 +75,7 @@ export interface StructuredDownloadRequest {
   search?: string;
   project_id?: string;
   source?: string;
+  dataset_name?: string;
 }
 
 export async function downloadStructured(req: StructuredDownloadRequest): Promise<void> {

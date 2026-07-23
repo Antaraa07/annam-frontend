@@ -24,13 +24,15 @@ interface Props {
   onOpenChange: (v: boolean) => void;
   activeFilters: { category: string; search: string; owner: string; label: string; source: string };
   count: number;
+  datasetNames: string[];
 }
 
-export default function DownloadModal({ open, onOpenChange, activeFilters, count }: Props) {
+export default function DownloadModal({ open, onOpenChange, activeFilters, count, datasetNames }: Props) {
   const [groupBy, setGroupBy]     = useState<StructuredDownloadRequest["group_by"]>("label");
   const [formats, setFormats]     = useState<string[]>(["zip", "csv", "readme"]);
   const [filterLabel, setFilterLabel]         = useState(activeFilters.label || "");
   const [filterCategory, setFilterCategory]   = useState(activeFilters.category || "");
+  const [filterDatasetName, setFilterDatasetName] = useState("");
   const [loading, setLoading]     = useState(false);
   const [error, setError]         = useState("");
 
@@ -57,6 +59,7 @@ export default function DownloadModal({ open, onOpenChange, activeFilters, count
         owner:     activeFilters.owner   || undefined,
         search:    activeFilters.search  || undefined,
         source:    activeFilters.source  || undefined,
+        dataset_name: filterDatasetName || undefined,
       });
       onOpenChange(false);
     } catch (e: unknown) {
@@ -131,7 +134,24 @@ export default function DownloadModal({ open, onOpenChange, activeFilters, count
         </div>
 
         {/* Extra filters */}
-        <div className="mb-5 grid grid-cols-2 gap-3">
+        <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div>
+            <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-400">
+              Filter by Dataset
+            </label>
+            <select
+              value={filterDatasetName}
+              onChange={(e) => setFilterDatasetName(e.target.value)}
+              className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-white outline-none focus:border-emerald-500"
+            >
+              <option value="">All</option>
+              {datasetNames.map((d) => (
+                <option key={d} value={d}>
+                  {d}
+                </option>
+              ))}
+            </select>
+          </div>
           <div>
             <label className="mb-1 block text-xs font-medium uppercase tracking-wider text-zinc-400">
               Filter by Label
