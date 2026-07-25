@@ -14,6 +14,19 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  async rewrites() {
+    // Only proxy in local dev, so production (Vercel) keeps calling
+    // the real backend directly and isn't affected by this at all.
+    if (process.env.NODE_ENV !== "development") {
+      return [];
+    }
+    return [
+      {
+        source: "/api/:path*",
+        destination: "https://storage.annam.ai/:path*",
+      },
+    ];
+  },
 };
 
 export default nextConfig;

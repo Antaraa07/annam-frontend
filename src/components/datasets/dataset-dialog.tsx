@@ -110,12 +110,12 @@ function InfoCard({ icon: Icon, label, value, mono = false }: InfoCardProps) {
   return (
     <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 transition hover:border-emerald-500/30">
       <div className="mb-1.5 flex items-center gap-1.5">
-        <Icon size={10} className="text-emerald-400 shrink-0" />
-        <p className="text-[9px] font-semibold uppercase tracking-widest text-zinc-500 truncate">
+        <Icon size={13} className="text-emerald-400 shrink-0" />
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 truncate">
           {label}
         </p>
       </div>
-      <p className={`break-all leading-5 ${mono ? "font-mono text-[10px] text-emerald-300" : "text-xs text-white"}`}>
+      <p className={`break-all leading-5 ${mono ? "font-mono text-[13px] text-emerald-300" : "text-[13px] font-medium text-white"}`}>
         {value || "—"}
       </p>
     </div>

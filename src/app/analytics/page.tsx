@@ -23,6 +23,8 @@ import MouseTracker from "@/components/ui/mouse-tracker";
 
 import SummaryCard from "@/components/analytics/summary-card";
 import RecentActivity from "@/components/analytics/recent-activity";
+import CropDistribution from "@/components/dashboard/crop-distribution";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 import { getSummary, getOwners } from "@/services/analytics";
 import { getRecentActivity } from "@/services/activity";
@@ -55,8 +57,54 @@ interface Summary {
 
 type UserEntry = { username: string; role: string };
 
-function formatDay(value: string) {
-  return new Intl.DateTimeFormat("en-IN", { day: "2-digit", month: "short", year: "numeric" }).format(new Date(`${value}T00:00:00`));
+function getPeriodKey(dateStr: string | undefined, period: string): string {
+  if (!dateStr) return "";
+  const d = new Date(dateStr);
+  if (Number.isNaN(d.valueOf())) return "";
+  
+  if (period === "yearly") {
+    return d.getFullYear().toString();
+  }
+  if (period === "monthly") {
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    return `${d.getFullYear()}-${mm}`;
+  }
+  if (period === "weekly") {
+    const day = d.getDay();
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+    const startOfWeek = new Date(d.setDate(diff));
+    const mm = String(startOfWeek.getMonth() + 1).padStart(2, "0");
+    const dd = String(startOfWeek.getDate()).padStart(2, "0");
+    return `${startOfWeek.getFullYear()}-${mm}-${dd}`;
+  }
+  // daily
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${mm}-${dd}`;
+}
+
+function formatPeriod(periodKey: string, period: string): string {
+  if (!periodKey) return "—";
+  try {
+    if (period === "yearly") {
+      return `Year ${periodKey}`;
+    }
+    if (period === "monthly") {
+      const [year, month] = periodKey.split("-");
+      const date = new Date(parseInt(year), parseInt(month) - 1, 2);
+      return new Intl.DateTimeFormat("en-IN", { month: "long", year: "numeric" }).format(date);
+    }
+    if (period === "weekly") {
+      const date = new Date(periodKey);
+      const formatted = new Intl.DateTimeFormat("en-IN", { day: "2-digit", month: "short", year: "numeric" }).format(date);
+      return `Wk of ${formatted}`;
+    }
+    // daily
+    const date = new Date(periodKey);
+    return new Intl.DateTimeFormat("en-IN", { day: "2-digit", month: "short", year: "numeric" }).format(date);
+  } catch {
+    return periodKey;
+  }
 }
 
 export default function AnalyticsPage() {
@@ -70,6 +118,7 @@ export default function AnalyticsPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [reportOpen, setReportOpen] = useState(false);
+  const [internPeriod, setInternPeriod] = useState<"daily" | "weekly" | "monthly" | "yearly">("monthly");
 
   useEffect(() => {
     setRole(localStorage.getItem("role") || "");
@@ -146,23 +195,25 @@ export default function AnalyticsPage() {
     return null;
   }, [datasets, username, isInternOrOther]);
 
-  // Personal Monthly progress for Interns
+  // Personal progress for Interns (Daily, Weekly, Monthly, Yearly)
   const personalProgress = useMemo(() => {
     const myUploads = datasets.filter((d) => d.owner === username);
     const groups: Record<string, number> = {};
     myUploads.forEach((d) => {
-      if (!d.timestamp) return;
-      const monthStr = d.timestamp.slice(0, 7); // YYYY-MM
-      groups[monthStr] = (groups[monthStr] || 0) + 1;
+      const periodKey = getPeriodKey(d.timestamp, internPeriod);
+      if (!periodKey) return;
+      groups[periodKey] = (groups[periodKey] || 0) + 1;
     });
     return Object.entries(groups)
-      .map(([month, count]) => {
-        const date = new Date(`${month}-02T00:00:00`);
-        const label = new Intl.DateTimeFormat("en-IN", { month: "short", year: "numeric" }).format(date);
-        return { month: label, count, raw: month };
+      .map(([periodKey, count]) => {
+        return { 
+          month: formatPeriod(periodKey, internPeriod), 
+          count, 
+          raw: periodKey 
+        };
       })
       .sort((a, b) => a.raw.localeCompare(b.raw));
-  }, [datasets, username]);
+  }, [datasets, username, internPeriod]);
 
   // Category split for Interns
   const personalCategoryMix = useMemo(() => {
@@ -288,6 +339,7 @@ export default function AnalyticsPage() {
       projectShareData,
       internContributionData,
       categoryData,
+      myProjectDatasets,
     };
   }, [isAdmin, projects, datasets, username]);
 
@@ -429,22 +481,22 @@ export default function AnalyticsPage() {
                       <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
                         <div className="flex h-10 w-10 items-center justify-center rounded-xl border text-emerald-300 border-emerald-500/25 bg-emerald-500/10"><Images size={18} /></div>
                         <p className="mt-5 text-2xl font-bold text-white">{datasets.length}</p>
-                        <p className="mt-1 text-xs font-medium text-zinc-500">Total Images</p>
+                        <p className="mt-1 text-[13px] font-medium text-zinc-400">Total Images</p>
                       </div>
                       <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
                         <div className="flex h-10 w-10 items-center justify-center rounded-xl border text-violet-300 border-violet-500/25 bg-violet-500/10"><Crown size={18} /></div>
                         <p className="mt-5 text-2xl font-bold text-white">{users.filter(u => u.role === "admin").length}</p>
-                        <p className="mt-1 text-xs font-medium text-zinc-500">Total Admins</p>
+                        <p className="mt-1 text-[13px] font-medium text-zinc-400">Total Admins</p>
                       </div>
                       <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
                         <div className="flex h-10 w-10 items-center justify-center rounded-xl border text-amber-300 border-amber-500/25 bg-amber-500/10"><Users size={18} /></div>
                         <p className="mt-5 text-2xl font-bold text-white">{users.filter(u => u.role === "intern").length}</p>
-                        <p className="mt-1 text-xs font-medium text-zinc-500">Total Interns</p>
+                        <p className="mt-1 text-[13px] font-medium text-zinc-400">Total Interns</p>
                       </div>
                       <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
                         <div className="flex h-10 w-10 items-center justify-center rounded-xl border text-sky-300 border-sky-500/25 bg-sky-500/10"><Database size={18} /></div>
                         <p className="mt-5 text-2xl font-bold text-white">{projects.length}</p>
-                        <p className="mt-1 text-xs font-medium text-zinc-500">Total Projects</p>
+                        <p className="mt-1 text-[13px] font-medium text-zinc-400">Total Projects</p>
                       </div>
                     </div>
 
@@ -476,6 +528,11 @@ export default function AnalyticsPage() {
                           </ResponsiveContainer>
                         </div>
                       </div>
+                    </div>
+
+                    {/* Crop Type Distribution */}
+                    <div className="grid gap-6">
+                      <CropDistribution datasets={datasets} isLoading={loading} variant="analytics" />
                     </div>
 
                     {/* Admin Management Section */}
@@ -547,17 +604,17 @@ export default function AnalyticsPage() {
                       <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
                         <div className="flex h-10 w-10 items-center justify-center rounded-xl border text-sky-300 border-sky-500/25 bg-sky-500/10"><Database size={18} /></div>
                         <p className="mt-5 text-2xl font-bold text-white">{adminAnalytics.projectsCount}</p>
-                        <p className="mt-1 text-xs font-medium text-zinc-500">My Projects</p>
+                        <p className="mt-1 text-[13px] font-medium text-zinc-400">My Projects</p>
                       </div>
                       <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
                         <div className="flex h-10 w-10 items-center justify-center rounded-xl border text-amber-300 border-amber-500/25 bg-amber-500/10"><Users size={18} /></div>
                         <p className="mt-5 text-2xl font-bold text-white">{adminAnalytics.internsCount}</p>
-                        <p className="mt-1 text-xs font-medium text-zinc-500">Assigned Interns</p>
+                        <p className="mt-1 text-[13px] font-medium text-zinc-400">Assigned Interns</p>
                       </div>
                       <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
                         <div className="flex h-10 w-10 items-center justify-center rounded-xl border text-emerald-300 border-emerald-500/25 bg-emerald-500/10"><Images size={18} /></div>
                         <p className="mt-5 text-2xl font-bold text-white">{adminAnalytics.totalImages}</p>
-                        <p className="mt-1 text-xs font-medium text-zinc-500">Total Images in My Projects</p>
+                        <p className="mt-1 text-[13px] font-medium text-zinc-400">Total Images in My Projects</p>
                       </div>
                     </div>
 
@@ -613,22 +670,25 @@ export default function AnalyticsPage() {
                       </div>
                     </div>
 
-                    {/* Category Mix in Admin Projects */}
-                    <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-5">
-                      <h3 className="font-semibold text-white text-sm mb-4">Category Distribution (in My Projects)</h3>
-                      <div className="h-60">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <BarChart data={adminAnalytics.categoryData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                            <XAxis dataKey="name" tick={{ fill: "#a1a1aa", fontSize: 10 }} />
-                            <YAxis tick={{ fill: "#71717a", fontSize: 10 }} />
-                            <Tooltip cursor={{ fill: "rgba(255,255,255,0.04)" }} contentStyle={{ background: "#18181b", border: "1px solid #27272a", borderRadius: "10px", color: "#f4f4f5" }} />
-                            <Bar dataKey="value" name="Images count" fill="#f59e0b" radius={[4, 4, 0, 0]}>
-                              {adminAnalytics.categoryData.map((entry) => (
-                                <Cell key={entry.name} fill={CATEGORY_COLORS[entry.name] || "#a1a1aa"} />
-                              ))}
-                            </Bar>
-                          </BarChart>
-                        </ResponsiveContainer>
+                    {/* Crop & Category Mix in Admin Projects */}
+                    <div className="grid gap-6 xl:grid-cols-2">
+                      <CropDistribution datasets={adminAnalytics.myProjectDatasets} isLoading={loading} variant="analytics" />
+                      <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-5">
+                        <h3 className="font-semibold text-white text-sm mb-4">Category Distribution (in My Projects)</h3>
+                        <div className="h-60">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={adminAnalytics.categoryData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                              <XAxis dataKey="name" tick={{ fill: "#a1a1aa", fontSize: 10 }} />
+                              <YAxis tick={{ fill: "#71717a", fontSize: 10 }} />
+                              <Tooltip cursor={{ fill: "rgba(255,255,255,0.04)" }} contentStyle={{ background: "#18181b", border: "1px solid #27272a", borderRadius: "10px", color: "#f4f4f5" }} />
+                              <Bar dataKey="value" name="Images count" fill="#f59e0b" radius={[4, 4, 0, 0]}>
+                                {adminAnalytics.categoryData.map((entry) => (
+                                  <Cell key={entry.name} fill={CATEGORY_COLORS[entry.name] || "#a1a1aa"} />
+                                ))}
+                              </Bar>
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
                       </div>
                     </div>
                   </>
@@ -641,26 +701,45 @@ export default function AnalyticsPage() {
                       <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
                         <div className="flex h-10 w-10 items-center justify-center rounded-xl border text-emerald-300 border-emerald-500/25 bg-emerald-500/10"><Images size={18} /></div>
                         <p className="mt-5 text-2xl font-bold text-white">{datasets.length}</p>
-                        <p className="mt-1 text-xs font-medium text-zinc-500">My Uploaded Images</p>
+                        <p className="mt-1 text-[13px] font-medium text-zinc-400">My Uploaded Images</p>
                       </div>
                       <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
                         <div className="flex h-10 w-10 items-center justify-center rounded-xl border text-sky-300 border-sky-500/25 bg-sky-500/10"><Database size={18} /></div>
                         <p className="mt-5 text-2xl font-bold text-white">{new Set(datasets.map(d => d.dataset_name)).size}</p>
-                        <p className="mt-1 text-xs font-medium text-zinc-500">My Datasets</p>
+                        <p className="mt-1 text-[13px] font-medium text-zinc-400">My Datasets</p>
                       </div>
                       <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
                         <div className="flex h-10 w-10 items-center justify-center rounded-xl border text-amber-300 border-amber-500/25 bg-amber-500/10"><Clock3 size={18} /></div>
                         <p className="mt-5 text-2xl font-bold text-white">
                           {datasets[0]?.timestamp ? new Date(datasets[0].timestamp).toLocaleDateString("en-IN") : "—"}
                         </p>
-                        <p className="mt-1 text-xs font-medium text-zinc-500">Last Upload Date</p>
+                        <p className="mt-1 text-[13px] font-medium text-zinc-400">Last Upload Date</p>
                       </div>
                     </div>
 
                     <div className="grid gap-6 xl:grid-cols-5">
                       {/* Timeline AreaChart */}
-                      <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-5 xl:col-span-3">
-                        <h3 className="font-semibold text-white text-sm mb-4">My Collection Timeline Progress</h3>
+                      <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-5 xl:col-span-3 flex flex-col justify-between">
+                        <div className="flex items-center justify-between mb-4">
+                          <h3 className="font-semibold text-white text-sm">My Collection Timeline Progress</h3>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-zinc-400 font-medium">Period:</span>
+                            <Select
+                              value={internPeriod}
+                              onValueChange={(val) => setInternPeriod(val as any)}
+                            >
+                              <SelectTrigger className="w-[100px] h-8 border-zinc-800 bg-zinc-950 text-xs font-semibold text-zinc-300">
+                                <SelectValue placeholder="Period" />
+                              </SelectTrigger>
+                              <SelectContent className="border-zinc-800 bg-zinc-950 text-zinc-300">
+                                <SelectItem value="daily">Daily</SelectItem>
+                                <SelectItem value="weekly">Weekly</SelectItem>
+                                <SelectItem value="monthly">Monthly</SelectItem>
+                                <SelectItem value="yearly">Yearly</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
                         <div className="h-64">
                           {personalProgress.length === 0 ? (
                             <p className="text-xs text-zinc-500 py-24 text-center">No upload data recorded yet.</p>
@@ -710,6 +789,11 @@ export default function AnalyticsPage() {
                           </div>
                         </div>
                       </div>
+                    </div>
+
+                    {/* Crop Type Distribution */}
+                    <div className="grid gap-6">
+                      <CropDistribution datasets={datasets.filter(d => d.owner === username)} isLoading={loading} variant="analytics" />
                     </div>
 
                     <div>

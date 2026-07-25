@@ -251,7 +251,7 @@ export function UploadMetadataDialog({ category, initialMetadata, open, onOpenCh
         <div className="grid max-h-[60vh] grid-cols-1 gap-3 overflow-y-auto px-5 py-4 sm:grid-cols-2">
           {fields.map((field) => (
             <div key={field.key} className={field.type === "textarea" ? "sm:col-span-2" : ""}>
-              <label className="mb-1 block text-xs font-medium text-zinc-300">
+              <label className="mb-1 block text-[13px] font-medium text-zinc-300">
                 {field.label}{field.required && <span className="ml-1 text-red-400">*</span>}
               </label>
               {field.type === "textarea" ? (

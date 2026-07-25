@@ -74,7 +74,7 @@ export default function Sidebar() {
           <h1 className="text-lg font-bold tracking-tight text-white">ANNAM</h1>
         </div>
 
-        <p className="mt-0.5 pl-4 text-xs text-zinc-500">Storage Platform</p>
+        <p className="mt-0.5 pl-4 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Storage Platform</p>
       </div>
 
       <nav className="flex-1 space-y-0.5 px-3">
@@ -134,7 +134,7 @@ export default function Sidebar() {
                 router.push("/login");
               }
             }}
-            className="flex w-full items-center justify-center gap-3 rounded-xl px-4 py-2 text-xs font-medium text-emerald-300 hover:bg-zinc-800/60 transition-colors duration-200"
+            className="flex w-full items-center justify-center gap-3 rounded-xl px-4 py-2 text-[13px] font-semibold text-emerald-300 hover:bg-zinc-800/60 transition-colors duration-200"
           >
             <LogOut size={14} className="shrink-0" />
             <span>{user.username ? "Logout" : "Login"}</span>

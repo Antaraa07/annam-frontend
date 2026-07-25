@@ -186,8 +186,9 @@ export default function DownloadModal({ open, onOpenChange, activeFilters, count
           <span className="text-zinc-300">export.zip</span><br />
           {formats.includes("zip") && (
             <>
-              &nbsp;&nbsp;<span className="text-emerald-400">{"<"}{groupBy}{"_value>"}/</span><br />
-              &nbsp;&nbsp;&nbsp;&nbsp;img001.jpg …<br />
+              &nbsp;&nbsp;<span className="text-zinc-400">imgs/</span><br />
+              &nbsp;&nbsp;&nbsp;&nbsp;<span className="text-emerald-400">{"<"}{groupBy}{"_value>"}/</span><br />
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;img001.jpg …<br />
             </>
           )}
           {formats.includes("csv")    && <>&nbsp;&nbsp;labels.csv<br /></>}

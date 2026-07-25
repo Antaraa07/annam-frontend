@@ -11,4 +11,6 @@ export interface Dataset {
   label?: string;
   timestamp?: string;
   original_filename?: string;
+  crop_type?: string;
+  crop_name?: string;
 }

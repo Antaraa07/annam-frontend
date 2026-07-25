@@ -31,6 +31,8 @@ import MouseTracker from "@/components/ui/mouse-tracker";
 import RecentUploads from "@/components/dashboard/recent-uploads";
 import StorageUsage from "@/components/dashboard/storage-usage";
 import StatsCard from "@/components/dashboard/stats-card";
+import CropDistribution from "@/components/dashboard/crop-distribution";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 import { getSummary } from "@/services/api";
 import { getDatasets } from "@/services/datasets";
@@ -271,6 +273,56 @@ function PersonalActivity({ data, loading }: { data: Dataset[]; loading: boolean
   );
 }
 
+function getPeriodKey(dateStr: string | undefined, period: string): string {
+  if (!dateStr) return "";
+  const d = new Date(dateStr);
+  if (Number.isNaN(d.valueOf())) return "";
+  
+  if (period === "yearly") {
+    return d.getFullYear().toString();
+  }
+  if (period === "monthly") {
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    return `${d.getFullYear()}-${mm}`;
+  }
+  if (period === "weekly") {
+    const day = d.getDay();
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+    const startOfWeek = new Date(d.setDate(diff));
+    const mm = String(startOfWeek.getMonth() + 1).padStart(2, "0");
+    const dd = String(startOfWeek.getDate()).padStart(2, "0");
+    return `${startOfWeek.getFullYear()}-${mm}-${dd}`;
+  }
+  // daily
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${mm}-${dd}`;
+}
+
+function formatPeriod(periodKey: string, period: string): string {
+  if (!periodKey) return "—";
+  try {
+    if (period === "yearly") {
+      return `Year ${periodKey}`;
+    }
+    if (period === "monthly") {
+      const [year, month] = periodKey.split("-");
+      const date = new Date(parseInt(year), parseInt(month) - 1, 2);
+      return new Intl.DateTimeFormat("en-IN", { month: "long", year: "numeric" }).format(date);
+    }
+    if (period === "weekly") {
+      const date = new Date(periodKey);
+      const formatted = new Intl.DateTimeFormat("en-IN", { day: "2-digit", month: "short", year: "numeric" }).format(date);
+      return `Wk of ${formatted}`;
+    }
+    // daily
+    const date = new Date(periodKey);
+    return new Intl.DateTimeFormat("en-IN", { day: "2-digit", month: "short", year: "numeric" }).format(date);
+  } catch {
+    return periodKey;
+  }
+}
+
 export default function Home() {
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [datasets, setDatasets] = useState<Dataset[]>([]);
@@ -283,6 +335,8 @@ export default function Home() {
   const [username, setUsername] = useState("");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [superadminPeriod, setSuperadminPeriod] = useState<"daily" | "weekly" | "monthly" | "yearly">("daily");
+  const [adminPeriod, setAdminPeriod] = useState<"daily" | "weekly" | "monthly" | "yearly">("daily");
 
   const load = useCallback(async () => {
     const curRole = localStorage.getItem("role") || "";
@@ -363,87 +417,78 @@ export default function Home() {
     const grouped = new Map<string, { dates: Date[]; names: Set<string>; files: Dataset[] }>();
     datasets.forEach((dataset) => {
       if (!assignedInterns.has(dataset.owner)) return;
-      const date = dataset.timestamp ? new Date(dataset.timestamp) : null;
-      if (!date || Number.isNaN(date.valueOf())) return;
-      const day = date.toISOString().slice(0, 10);
-      const key = `${day}:${dataset.owner}`;
+      const periodKey = getPeriodKey(dataset.timestamp, adminPeriod);
+      if (!periodKey) return;
+      const key = `${periodKey}:${dataset.owner}`;
       const current = grouped.get(key) ?? { dates: [], names: new Set(), files: [] };
-      current.dates.push(date);
+      if (dataset.timestamp) current.dates.push(new Date(dataset.timestamp));
       current.names.add(dataset.dataset_name);
       current.files.push(dataset);
       grouped.set(key, current);
     });
     return [...grouped.entries()].map(([key, value]) => {
-      const [day, intern] = key.split(":");
+      const [periodKey, intern] = key.split(":");
       return { 
-        day, 
+        periodKey, 
         intern, 
         uploadedImages: value.files.length, 
         datasets: value.names.size, 
-        latestUpload: new Date(Math.max(...value.dates.map((date) => date.valueOf()))).toISOString() 
+        latestUpload: value.dates.length > 0 ? new Date(Math.max(...value.dates.map((date) => date.valueOf()))).toISOString() : new Date(periodKey).toISOString() 
       };
-    }).sort((a, b) => b.latestUpload.localeCompare(a.latestUpload)).slice(0, 30);
-  }, [datasets, assignedInterns]);
+    }).sort((a, b) => b.latestUpload.localeCompare(a.latestUpload));
+  }, [datasets, assignedInterns, adminPeriod]);
 
-  // Superadmin Daily Admin Uploads Table
-  const dailyAdminUploads = useMemo(() => {
-    const admins = users.filter(u => u.role === "admin").map(u => u.username);
-    const adminToInterns = new Map<string, Set<string>>();
-    admins.forEach(admin => {
-      const interns = new Set<string>();
-      projects.filter(p => p.owner === admin).forEach(p => {
-        p.assigned_users?.forEach(u => interns.add(u));
-      });
-      adminToInterns.set(admin, interns);
+  // Superadmin Admin Uploads Table
+  const superadminAdminUploads = useMemo(() => {
+    const adminUsernames = new Set(users.filter(u => u.role === "admin" || u.role === "superadmin").map(u => u.username));
+    const grouped = new Map<string, { count: number; dates: Date[] }>();
+    datasets.forEach(d => {
+      if (!adminUsernames.has(d.owner)) return;
+      const periodKey = getPeriodKey(d.timestamp, superadminPeriod);
+      if (!periodKey) return;
+      const key = `${periodKey}:${d.owner}`;
+      const current = grouped.get(key) ?? { count: 0, dates: [] };
+      current.count += 1;
+      if (d.timestamp) current.dates.push(new Date(d.timestamp));
+      grouped.set(key, current);
     });
-
-    const grouped = new Map<string, {
-      adminOwnUploads: number;
-      internUploads: number;
-      activeInterns: Set<string>;
-      dates: Date[];
-    }>();
-
-    datasets.forEach(dataset => {
-      const date = dataset.timestamp ? new Date(dataset.timestamp) : null;
-      if (!date || Number.isNaN(date.valueOf())) return;
-      const day = date.toISOString().slice(0, 10);
-      
-      admins.forEach(admin => {
-        const key = `${day}:${admin}`;
-        const current = grouped.get(key) ?? { adminOwnUploads: 0, internUploads: 0, activeInterns: new Set(), dates: [] };
-        
-        if (dataset.owner === admin) {
-          current.adminOwnUploads += 1;
-          current.dates.push(date);
-          grouped.set(key, current);
-        } else {
-          const internsUnderAdmin = adminToInterns.get(admin);
-          if (internsUnderAdmin?.has(dataset.owner)) {
-            current.internUploads += 1;
-            current.activeInterns.add(dataset.owner);
-            current.dates.push(date);
-            grouped.set(key, current);
-          }
-        }
-      });
-    });
-
-    return [...grouped.entries()].map(([key, value]) => {
-      const [day, admin] = key.split(":");
+    return [...grouped.entries()].map(([key, val]) => {
+      const [periodKey, admin] = key.split(":");
       return {
-        day,
+        periodKey,
         admin,
-        adminOwnUploads: value.adminOwnUploads,
-        internUploads: value.internUploads,
-        activeInterns: Array.from(value.activeInterns),
-        latestUpload: value.dates.length > 0 ? new Date(Math.max(...value.dates.map(d => d.valueOf()))).toISOString() : new Date(day).toISOString()
+        count: val.count,
+        latestUpload: val.dates.length > 0 ? new Date(Math.max(...val.dates.map(d => d.valueOf()))).toISOString() : new Date(periodKey).toISOString()
       };
     })
-    .filter(row => row.adminOwnUploads > 0 || row.internUploads > 0)
-    .sort((a, b) => b.latestUpload.localeCompare(a.latestUpload))
-    .slice(0, 30);
-  }, [datasets, users, projects]);
+    .sort((a, b) => b.latestUpload.localeCompare(a.latestUpload));
+  }, [datasets, users, superadminPeriod]);
+
+  // Superadmin Intern Uploads Table
+  const superadminInternUploads = useMemo(() => {
+    const internUsernames = new Set(users.filter(u => u.role === "intern").map(u => u.username));
+    const grouped = new Map<string, { count: number; dates: Date[] }>();
+    datasets.forEach(d => {
+      if (!internUsernames.has(d.owner)) return;
+      const periodKey = getPeriodKey(d.timestamp, superadminPeriod);
+      if (!periodKey) return;
+      const key = `${periodKey}:${d.owner}`;
+      const current = grouped.get(key) ?? { count: 0, dates: [] };
+      current.count += 1;
+      if (d.timestamp) current.dates.push(new Date(d.timestamp));
+      grouped.set(key, current);
+    });
+    return [...grouped.entries()].map(([key, val]) => {
+      const [periodKey, intern] = key.split(":");
+      return {
+        periodKey,
+        intern,
+        count: val.count,
+        latestUpload: val.dates.length > 0 ? new Date(Math.max(...val.dates.map(d => d.valueOf()))).toISOString() : new Date(periodKey).toISOString()
+      };
+    })
+    .sort((a, b) => b.latestUpload.localeCompare(a.latestUpload));
+  }, [datasets, users, superadminPeriod]);
 
   // Recharts Categories for Superadmin
   const categories = useMemo(() => {
@@ -511,27 +556,27 @@ export default function Home() {
                   <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
                     <div className="flex h-10 w-10 items-center justify-center rounded-xl border text-emerald-300 border-emerald-500/25 bg-emerald-500/10"><Images size={18} /></div>
                     <p className="mt-5 text-2xl font-bold text-white">{datasets.length.toLocaleString("en-IN")}</p>
-                    <p className="mt-1 text-xs font-medium text-zinc-500">Uploaded images</p>
+                    <p className="mt-1 text-[13px] font-medium text-zinc-400">Uploaded images</p>
                   </div>
                   <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
                     <div className="flex h-10 w-10 items-center justify-center rounded-xl border text-violet-300 border-violet-500/25 bg-violet-500/10"><Users size={18} /></div>
                     <p className="mt-5 text-2xl font-bold text-white">{users.length.toLocaleString("en-IN")}</p>
-                    <p className="mt-1 text-xs font-medium text-zinc-500">Platform users</p>
+                    <p className="mt-1 text-[13px] font-medium text-zinc-400">Platform users</p>
                   </div>
                   <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
                     <div className="flex h-10 w-10 items-center justify-center rounded-xl border text-amber-300 border-amber-500/25 bg-amber-500/10"><ShieldCheck size={18} /></div>
                     <p className="mt-5 text-2xl font-bold text-white">{users.filter((user) => user.role === "intern").length.toLocaleString("en-IN")}</p>
-                    <p className="mt-1 text-xs font-medium text-zinc-500">Intern contributors</p>
+                    <p className="mt-1 text-[13px] font-medium text-zinc-400">Intern contributors</p>
                   </div>
                   <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
                     <div className="flex h-10 w-10 items-center justify-center rounded-xl border text-sky-300 border-sky-500/25 bg-sky-500/10"><Database size={18} /></div>
                     <p className="mt-5 text-2xl font-bold text-white">{new Set(datasets.map((dataset) => dataset.dataset_name)).size.toLocaleString("en-IN")}</p>
-                    <p className="mt-1 text-xs font-medium text-zinc-500">Named datasets</p>
+                    <p className="mt-1 text-[13px] font-medium text-zinc-400">Named datasets</p>
                   </div>
                   <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
                     <div className="flex h-10 w-10 items-center justify-center rounded-xl border text-pink-300 border-pink-500/25 bg-pink-500/10"><HardDrive size={18} /></div>
                     <p className="mt-5 text-2xl font-bold text-white">{summary?.storage || "—"}</p>
-                    <p className="mt-1 text-xs font-medium text-zinc-500">Storage size</p>
+                    <p className="mt-1 text-[13px] font-medium text-zinc-400">Storage size</p>
                   </div>
                 </section>
 
@@ -541,7 +586,7 @@ export default function Home() {
                     <div className="flex items-start justify-between gap-4">
                       <div>
                         <h2 className="font-semibold text-white">Category distribution</h2>
-                        <p className="mt-1 text-xs text-zinc-500">Every uploaded image, grouped by field category.</p>
+                        <p className="mt-1 text-sm text-zinc-400">Every uploaded image, grouped by field category.</p>
                       </div>
                       <span className="rounded-lg border border-violet-500/25 bg-violet-500/10 px-2 py-1 text-xs font-medium text-violet-300">{datasets.length} total</span>
                     </div>
@@ -561,7 +606,7 @@ export default function Home() {
                   <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5 xl:col-span-2 flex flex-col justify-between">
                     <div>
                       <h2 className="font-semibold text-white">Collection coverage</h2>
-                      <p className="mt-1 text-xs text-zinc-500">Category totals at a glance.</p>
+                      <p className="mt-1 text-sm text-zinc-400">Category totals at a glance.</p>
                       <div className="mt-5 space-y-3">
                         {categories.map((item) => (
                           <div key={item.category} className="flex items-center gap-3">
@@ -575,49 +620,106 @@ export default function Home() {
                   </div>
                 </section>
 
-                {/* Storage usage */}
-                <section>
+                {/* Storage & Crop Distribution */}
+                <section className="grid gap-6 xl:grid-cols-2">
+                  <CropDistribution datasets={datasets} isLoading={loading} />
                   <StorageUsage data={storageUsage} isLoading={loading} />
                 </section>
 
-                {/* Daily Admin Uploads Table */}
-                <section className="overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/80">
-                  <div className="flex items-start justify-between gap-4 border-b border-zinc-800 px-5 py-4">
+                {/* Upload Activity Breakdown */}
+                <section className="overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/80 shadow-xl transition-all">
+                  <div className="flex items-center justify-between gap-4 border-b border-zinc-800 px-5 py-4">
                     <div>
-                      <h2 className="font-semibold text-white">Daily Admin Uploads</h2>
-                      <p className="mt-1 text-xs text-zinc-500">Cumulative record of uploads done by admins and their assigned interns.</p>
+                      <h2 className="text-lg font-semibold text-white">Upload Activity Breakdown</h2>
+                      <p className="mt-1 text-sm text-zinc-400">Track and compare upload counts grouped by selected period.</p>
                     </div>
-                    <span className="rounded-lg border border-violet-500/25 bg-violet-500/10 px-2 py-1 text-xs font-medium text-violet-300">Last 30 records</span>
+                    <div className="flex items-center gap-3">
+                      <span className="text-[13px] text-zinc-400 font-medium">Period:</span>
+                      <Select
+                        value={superadminPeriod}
+                        onValueChange={(val) => setSuperadminPeriod(val as any)}
+                      >
+                        <SelectTrigger className="w-[120px] h-9 border-zinc-800 bg-zinc-950 text-xs font-semibold text-zinc-300">
+                          <SelectValue placeholder="Period" />
+                        </SelectTrigger>
+                        <SelectContent className="border-zinc-800 bg-zinc-950 text-zinc-300">
+                          <SelectItem value="daily">Daily</SelectItem>
+                          <SelectItem value="weekly">Weekly</SelectItem>
+                          <SelectItem value="monthly">Monthly</SelectItem>
+                          <SelectItem value="yearly">Yearly</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
-                  <div className="overflow-x-auto">
-                    <table className="min-w-full text-sm">
-                      <thead className="border-b border-zinc-800 bg-zinc-900">
-                        <tr>
-                          {["Day", "Admin", "Admin Uploads", "Intern Uploads", "Active Interns"].map((heading) => (
-                            <th key={heading} className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-zinc-500">{heading}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {dailyAdminUploads.length === 0 ? (
-                          <tr>
-                            <td colSpan={5} className="px-5 py-12 text-center text-zinc-500">No admin uploads recorded yet.</td>
-                          </tr>
-                        ) : (
-                          dailyAdminUploads.map((record) => (
-                            <tr key={`${record.day}-${record.admin}`} className="border-b border-zinc-800/70 last:border-0 hover:bg-zinc-800/30">
-                              <td className="px-5 py-3.5 text-zinc-300">{formatDay(record.day)}</td>
-                              <td className="px-5 py-3.5 font-medium text-white">{record.admin}</td>
-                              <td className="px-5 py-3.5 text-emerald-300 font-mono">{record.adminOwnUploads}</td>
-                              <td className="px-5 py-3.5 text-violet-300 font-mono">{record.internUploads}</td>
-                              <td className="px-5 py-3.5 text-zinc-400">
-                                {record.activeInterns.length === 0 ? "—" : record.activeInterns.join(", ")}
-                              </td>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 p-5">
+                    {/* Admin Partition */}
+                    <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 overflow-hidden">
+                      <div className="border-b border-zinc-800 bg-zinc-900/80 px-4 py-3">
+                        <h3 className="font-semibold text-white text-sm">Admin Uploads</h3>
+                      </div>
+                      <div className="overflow-x-auto max-h-[400px] overflow-y-auto [scrollbar-width:thin] [scrollbar-color:#3f3f46_transparent]">
+                        <table className="w-full text-sm">
+                          <thead className="border-b border-zinc-800 bg-zinc-950">
+                            <tr>
+                              {["Period", "Admin Username", "Uploaded Images", "Latest Upload"].map((heading) => (
+                                <th key={heading} className="px-4 py-2.5 text-left text-[13px] font-semibold uppercase tracking-wider text-zinc-400">{heading}</th>
+                              ))}
                             </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
+                          </thead>
+                          <tbody>
+                            {superadminAdminUploads.length === 0 ? (
+                              <tr>
+                                <td colSpan={4} className="px-4 py-8 text-center text-zinc-500 text-sm">No admin uploads recorded.</td>
+                              </tr>
+                            ) : (
+                              superadminAdminUploads.map((record, index) => (
+                                <tr key={`admin-${record.periodKey}-${record.admin}-${index}`} className="border-b border-zinc-800/40 last:border-0 hover:bg-zinc-850/30">
+                                  <td className="px-4 py-3 text-zinc-300 font-medium whitespace-nowrap">{formatPeriod(record.periodKey, superadminPeriod)}</td>
+                                  <td className="px-4 py-3 font-semibold text-white">{record.admin}</td>
+                                  <td className="px-4 py-3 text-emerald-400 font-bold font-mono">{record.count}</td>
+                                  <td className="px-4 py-3 text-zinc-500 text-xs whitespace-nowrap">{formatTime(record.latestUpload)}</td>
+                                </tr>
+                              ))
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    {/* Intern Partition */}
+                    <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 overflow-hidden">
+                      <div className="border-b border-zinc-800 bg-zinc-900/80 px-4 py-3">
+                        <h3 className="font-semibold text-white text-sm">Intern Uploads</h3>
+                      </div>
+                      <div className="overflow-x-auto max-h-[400px] overflow-y-auto [scrollbar-width:thin] [scrollbar-color:#3f3f46_transparent]">
+                        <table className="w-full text-sm">
+                          <thead className="border-b border-zinc-800 bg-zinc-950">
+                            <tr>
+                              {["Period", "Intern Username", "Uploaded Images", "Latest Upload"].map((heading) => (
+                                <th key={heading} className="px-4 py-2.5 text-left text-[13px] font-semibold uppercase tracking-wider text-zinc-400">{heading}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {superadminInternUploads.length === 0 ? (
+                              <tr>
+                                <td colSpan={4} className="px-4 py-8 text-center text-zinc-500 text-sm">No intern uploads recorded.</td>
+                              </tr>
+                            ) : (
+                              superadminInternUploads.map((record, index) => (
+                                <tr key={`intern-${record.periodKey}-${record.intern}-${index}`} className="border-b border-zinc-800/40 last:border-0 hover:bg-zinc-850/30">
+                                  <td className="px-4 py-3 text-zinc-300 font-medium whitespace-nowrap">{formatPeriod(record.periodKey, superadminPeriod)}</td>
+                                  <td className="px-4 py-3 font-semibold text-white">{record.intern}</td>
+                                  <td className="px-4 py-3 text-violet-400 font-bold font-mono">{record.count}</td>
+                                  <td className="px-4 py-3 text-zinc-500 text-xs whitespace-nowrap">{formatTime(record.latestUpload)}</td>
+                                </tr>
+                              ))
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
                   </div>
                 </section>
               </div>
@@ -631,32 +733,33 @@ export default function Home() {
                   <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
                     <div className="flex h-10 w-10 items-center justify-center rounded-xl border text-emerald-300 border-emerald-500/25 bg-emerald-500/10"><Database size={18} /></div>
                     <p className="mt-5 text-2xl font-bold text-white">{summary?.datasets || "—"}</p>
-                    <p className="mt-1 text-xs font-medium text-zinc-500">Datasets</p>
+                    <p className="mt-1 text-[13px] font-medium text-zinc-400">Datasets</p>
                   </div>
                   <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
                     <div className="flex h-10 w-10 items-center justify-center rounded-xl border text-violet-300 border-violet-500/25 bg-violet-500/10"><Users size={18} /></div>
                     <p className="mt-5 text-2xl font-bold text-white">{users.length.toLocaleString("en-IN")}</p>
-                    <p className="mt-1 text-xs font-medium text-zinc-500">Users</p>
+                    <p className="mt-1 text-[13px] font-medium text-zinc-400">Users</p>
                   </div>
                   <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
                     <div className="flex h-10 w-10 items-center justify-center rounded-xl border text-sky-300 border-sky-500/25 bg-sky-500/10"><HardDrive size={18} /></div>
                     <p className="mt-5 text-2xl font-bold text-white">{summary?.storage || "—"}</p>
-                    <p className="mt-1 text-xs font-medium text-zinc-500">Storage</p>
+                    <p className="mt-1 text-[13px] font-medium text-zinc-400">Storage</p>
                   </div>
                   <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
                     <div className="flex h-10 w-10 items-center justify-center rounded-xl border text-pink-300 border-pink-500/25 bg-pink-500/10"><Images size={18} /></div>
                     <p className="mt-5 text-2xl font-bold text-white">{datasets.length.toLocaleString("en-IN")}</p>
-                    <p className="mt-1 text-xs font-medium text-zinc-500">Uploaded images</p>
+                    <p className="mt-1 text-[13px] font-medium text-zinc-400">Uploaded images</p>
                   </div>
                 </section>
 
-                {/* Recent Uploads & Collection Mix Donut */}
+                {/* Recent Uploads & Collection Mix & Crop Distribution */}
                 <section className="grid gap-6 xl:grid-cols-12">
-                  <div className="xl:col-span-7">
+                  <div className="xl:col-span-6">
                     <RecentUploads data={recentUploads} isLoading={loading} />
                   </div>
-                  <div className="xl:col-span-5">
+                  <div className="xl:col-span-6 flex flex-col gap-6">
                     <CollectionMix datasets={datasets} loading={loading} />
+                    <CropDistribution datasets={datasets} isLoading={loading} />
                   </div>
                 </section>
 
@@ -665,21 +768,37 @@ export default function Home() {
                   <StorageUsage data={storageUsage} isLoading={loading} />
                 </section>
 
-                {/* Daily Intern Uploads Table */}
-                <section className="overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/80">
-                  <div className="flex items-start justify-between gap-4 border-b border-zinc-800 px-5 py-4">
+                {/* Intern Upload Activity Table */}
+                <section className="overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/80 shadow-xl transition-all">
+                  <div className="flex items-center justify-between gap-4 border-b border-zinc-800 px-5 py-4">
                     <div>
-                      <h2 className="font-semibold text-white">Daily Intern Uploads</h2>
-                      <p className="mt-1 text-xs text-zinc-500">Daily uploads of interns assigned under your projects.</p>
+                      <h2 className="text-lg font-semibold text-white">Intern Upload Activity</h2>
+                      <p className="mt-1 text-sm text-zinc-400">Track uploads of interns assigned under your projects grouped by selected period.</p>
                     </div>
-                    <span className="rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-2 py-1 text-xs font-medium text-emerald-300">Last 30 records</span>
+                    <div className="flex items-center gap-3">
+                      <span className="text-[13px] text-zinc-400 font-medium">Period:</span>
+                      <Select
+                        value={adminPeriod}
+                        onValueChange={(val) => setAdminPeriod(val as any)}
+                      >
+                        <SelectTrigger className="w-[120px] h-9 border-zinc-800 bg-zinc-950 text-xs font-semibold text-zinc-300">
+                          <SelectValue placeholder="Period" />
+                        </SelectTrigger>
+                        <SelectContent className="border-zinc-800 bg-zinc-950 text-zinc-300">
+                          <SelectItem value="daily">Daily</SelectItem>
+                          <SelectItem value="weekly">Weekly</SelectItem>
+                          <SelectItem value="monthly">Monthly</SelectItem>
+                          <SelectItem value="yearly">Yearly</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
                   <div className="overflow-x-auto">
                     <table className="min-w-full text-sm">
                       <thead className="border-b border-zinc-800 bg-zinc-900">
                         <tr>
-                          {["Day", "Intern", "Uploaded Images", "Datasets", "Latest Upload"].map((heading) => (
-                            <th key={heading} className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-zinc-500">{heading}</th>
+                          {["Period", "Intern", "Uploaded Images", "Datasets", "Latest Upload"].map((heading) => (
+                            <th key={heading} className="px-5 py-3 text-left text-[13px] font-semibold uppercase tracking-wider text-zinc-400">{heading}</th>
                           ))}
                         </tr>
                       </thead>
@@ -689,13 +808,13 @@ export default function Home() {
                             <td colSpan={5} className="px-5 py-12 text-center text-zinc-500">No uploads recorded from your interns yet.</td>
                           </tr>
                         ) : (
-                          dailyInternUploads.map((record) => (
-                            <tr key={`${record.day}-${record.intern}`} className="border-b border-zinc-800/70 last:border-0 hover:bg-zinc-800/30">
-                              <td className="px-5 py-3.5 text-zinc-300">{formatDay(record.day)}</td>
-                              <td className="px-5 py-3.5 font-medium text-white">{record.intern}</td>
-                              <td className="px-5 py-3.5 text-emerald-300 font-mono">{record.uploadedImages}</td>
-                              <td className="px-5 py-3.5 text-zinc-300">{record.datasets}</td>
-                              <td className="px-5 py-3.5 text-zinc-400">{formatTime(record.latestUpload)}</td>
+                          dailyInternUploads.map((record, index) => (
+                            <tr key={`${record.periodKey}-${record.intern}-${index}`} className="border-b border-zinc-800/70 last:border-0 hover:bg-zinc-800/30">
+                              <td className="px-5 py-3.5 text-zinc-300 font-medium">{formatPeriod(record.periodKey, adminPeriod)}</td>
+                              <td className="px-5 py-3.5 font-semibold text-white">{record.intern}</td>
+                              <td className="px-5 py-3.5 text-emerald-300 font-bold font-mono">{record.uploadedImages}</td>
+                              <td className="px-5 py-3.5 text-zinc-300 font-mono">{record.datasets}</td>
+                              <td className="px-5 py-3.5 text-zinc-500 text-xs">{formatTime(record.latestUpload)}</td>
                             </tr>
                           ))
                         )}
@@ -712,19 +831,19 @@ export default function Home() {
                 {/* Stats cards */}
                 <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                   <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
-                    <p className="text-xs font-medium text-zinc-500">My images</p>
+                    <p className="text-[13px] font-medium text-zinc-400">My images</p>
                     <p className="mt-2 text-3xl font-extrabold text-white">{datasets.length}</p>
                   </div>
                   <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
-                    <p className="text-xs font-medium text-zinc-500">My datasets</p>
+                    <p className="text-[13px] font-medium text-zinc-400">My datasets</p>
                     <p className="mt-2 text-3xl font-extrabold text-white">{uniqueDatasets}</p>
                   </div>
                   <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
-                    <p className="text-xs font-medium text-zinc-500">Complete records</p>
+                    <p className="text-[13px] font-medium text-zinc-400">Complete records</p>
                     <p className="mt-2 text-3xl font-extrabold text-white">{completeRecords}</p>
                   </div>
                   <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
-                    <p className="text-xs font-medium text-zinc-500">Collection health</p>
+                    <p className="text-[13px] font-medium text-zinc-400">Collection health</p>
                     <p className="mt-2 text-3xl font-extrabold text-white">
                       {datasets.length ? Math.round((completeRecords / datasets.length) * 100) : 0}%
                     </p>
@@ -733,14 +852,17 @@ export default function Home() {
 
                 <div className="grid gap-6 xl:grid-cols-2">
                   <PersonalActivity data={activity} loading={loading} />
-                  <CollectionMix datasets={datasets} loading={loading} />
+                  <div className="flex flex-col gap-6">
+                    <CollectionMix datasets={datasets} loading={loading} />
+                    <CropDistribution datasets={datasets} isLoading={loading} />
+                  </div>
 
                   <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5 xl:col-span-2">
                     <div className="flex items-center gap-2">
                       <CheckCircle2 size={18} className="text-emerald-400" />
                       <div>
                         <h2 className="font-semibold text-white">Data health</h2>
-                        <p className="mt-1 text-xs text-zinc-500 font-medium">Records with an image, dataset name, category, and version.</p>
+                        <p className="mt-1 text-sm text-zinc-400 font-medium">Records with an image, dataset name, category, and version.</p>
                       </div>
                     </div>
                     <div className="mt-5 flex items-end gap-4">

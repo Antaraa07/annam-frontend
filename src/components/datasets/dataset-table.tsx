@@ -40,7 +40,7 @@ export default function DatasetTable({ datasets, onView, onDelete }: DatasetTabl
             {["Image", "Dataset", "Category", "Uploaded", "Actions"].map((h) => (
               <TableHead
                 key={h}
-                className={`text-xs font-semibold uppercase tracking-wider text-zinc-400 ${h === "Actions" ? "text-right" : ""}`}
+                className={`text-[13px] font-semibold uppercase tracking-wider text-zinc-400 ${h === "Actions" ? "text-right" : ""}`}
               >
                 {h}
               </TableHead>
@@ -69,7 +69,7 @@ export default function DatasetTable({ datasets, onView, onDelete }: DatasetTabl
               {/* Dataset name + owner */}
               <TableCell>
                 <p className="font-medium text-white leading-tight">{dataset.dataset_name}</p>
-                <p className="text-xs text-zinc-500 mt-0.5">{dataset.owner}</p>
+                <p className="text-[13px] text-zinc-400 mt-0.5">{dataset.owner}</p>
               </TableCell>
 
               {/* Category */}
