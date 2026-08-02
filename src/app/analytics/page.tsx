@@ -1,10 +1,13 @@
 "use client";
+import AppShell from "@/components/layout/app-shell";
 
 import { useEffect, useMemo, useState } from "react";
 import { Clock3, Database, FileText, Download, BarChart3, Users, Crown, ShieldCheck, HardDrive, Images, Activity } from "lucide-react";
 import { 
   Bar, 
   BarChart, 
+  ComposedChart,
+  Line,
   Cell, 
   ResponsiveContainer, 
   Tooltip, 
@@ -17,9 +20,6 @@ import {
   CartesianGrid 
 } from "recharts";
 
-import Sidebar from "@/components/layout/sidebar";
-import Topbar from "@/components/layout/topbar";
-import MouseTracker from "@/components/ui/mouse-tracker";
 
 import SummaryCard from "@/components/analytics/summary-card";
 import RecentActivity from "@/components/analytics/recent-activity";
@@ -37,7 +37,7 @@ import type { Project } from "@/types/project";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
-const CHART_COLORS = ["#10b981", "#3b82f6", "#f59e0b", "#8b5cf6", "#ec4899", "#f97316", "#0ea5e9", "#14b8a6"];
+const CHART_COLORS = ["#10b981", "#06b6d4", "#f59e0b", "#8b5cf6", "#ec4899", "#f97316", "#0ea5e9", "#14b8a6"];
 
 const CATEGORY_COLORS: Record<string, string> = {
   Healthy: "#10b981",
@@ -45,8 +45,18 @@ const CATEGORY_COLORS: Record<string, string> = {
   Pest: "#eab308",
   "Disease Damage": "#a855f7",
   "Pest Damage": "#f97316",
-  Damage: "#0ea5e9",
+  Damage: "#06b6d4",
   Unclassified: "#71717a",
+};
+
+const TOOLTIP_STYLE = {
+  background: "rgba(15, 15, 18, 0.92)",
+  border: "1px solid rgba(255, 255, 255, 0.12)",
+  borderRadius: "14px",
+  color: "#f4f4f5",
+  fontSize: "13px",
+  boxShadow: "0 10px 30px rgba(0, 0, 0, 0.5), 0 0 15px rgba(251, 169, 83, 0.08)",
+  backdropFilter: "blur(12px)",
 };
 
 interface Summary {
@@ -119,6 +129,8 @@ export default function AnalyticsPage() {
   const [loading, setLoading] = useState(true);
   const [reportOpen, setReportOpen] = useState(false);
   const [internPeriod, setInternPeriod] = useState<"daily" | "weekly" | "monthly" | "yearly">("monthly");
+  const [imageVolumeSource, setImageVolumeSource] = useState<"project" | "raw_data">("project");
+  const [internSplitSource, setInternSplitSource] = useState<"project" | "raw_data">("project");
 
   useEffect(() => {
     setRole(localStorage.getItem("role") || "");
@@ -240,22 +252,21 @@ export default function AnalyticsPage() {
       adminProjectsMap.set(p.owner, list);
     });
 
-    const projectImageCounts: Record<string, number> = {};
-    datasets.forEach((d) => {
-      if (d.project_id) {
-        projectImageCounts[d.project_id] = (projectImageCounts[d.project_id] || 0) + 1;
-      }
-    });
-
     const adminStats = adminsList.map((admin) => {
       const adminProjects = adminProjectsMap.get(admin) || [];
+      const adminProjectIds = new Set(adminProjects.map((p) => p.project_id));
       const interns = new Set<string>();
-      let totalImages = 0;
 
       adminProjects.forEach((p) => {
         p.assigned_users?.forEach((u) => interns.add(u));
-        totalImages += projectImageCounts[p.project_id] || 0;
       });
+
+      // Count ALL images collected under this admin:
+      // 1. Raw or project images uploaded by the admin (d.owner === admin)
+      // 2. Images inside projects owned by this admin (d.project_id in adminProjectIds)
+      const totalImages = datasets.filter(
+        (d) => d.owner === admin || (d.project_id && adminProjectIds.has(d.project_id))
+      ).length;
 
       return {
         admin,
@@ -283,7 +294,7 @@ export default function AnalyticsPage() {
     };
   }, [isSuperadmin, users, projects, datasets]);
 
-  // Admin scoped analytics (strictly for their managed projects/interns)
+  // Admin scoped analytics (strictly for their managed projects/interns/raw uploads)
   const adminAnalytics = useMemo(() => {
     if (!isAdmin) return null;
 
@@ -296,23 +307,41 @@ export default function AnalyticsPage() {
     });
 
     const myProjectDatasets = datasets.filter((d) => d.project_id && myProjectIds.has(d.project_id));
+    const myRawDatasets = datasets.filter((d) => !d.project_id && (d.owner === username || myInterns.has(d.owner)));
+    const allAdminDatasets = datasets.filter((d) => d.owner === username || (d.project_id && myProjectIds.has(d.project_id)) || (d.owner && myInterns.has(d.owner)));
 
-    // Project shares
-    const projectShares: Record<string, number> = {};
-    myProjects.forEach((p) => { projectShares[p.name] = 0; });
-    myProjectDatasets.forEach((d) => {
-      const proj = myProjects.find((p) => p.project_id === d.project_id);
-      if (proj) projectShares[proj.name] = (projectShares[proj.name] || 0) + 1;
-    });
+    // Image Volumes calculation based on imageVolumeSource dropdown ("project" vs "raw_data")
+    let imageVolumeData: { name: string; value: number }[] = [];
 
-    const projectShareData = Object.entries(projectShares)
-      .map(([name, value]) => ({ name, value }))
-      .sort((a, b) => b.value - a.value);
+    if (imageVolumeSource === "project") {
+      const projectShares: Record<string, number> = {};
+      myProjects.forEach((p) => { projectShares[p.name] = 0; });
+      myProjectDatasets.forEach((d) => {
+        const proj = myProjects.find((p) => p.project_id === d.project_id);
+        if (proj) projectShares[proj.name] = (projectShares[proj.name] || 0) + 1;
+      });
 
-    // Intern split in my projects
+      imageVolumeData = Object.entries(projectShares)
+        .map(([name, value]) => ({ name, value }))
+        .sort((a, b) => b.value - a.value);
+    } else {
+      // Raw Data Image Volumes
+      const rawShares: Record<string, number> = {};
+      myRawDatasets.forEach((d) => {
+        const groupName = d.dataset_name || d["lab/dept"] || d.department || "Raw Uploads";
+        rawShares[groupName] = (rawShares[groupName] || 0) + 1;
+      });
+
+      imageVolumeData = Object.entries(rawShares)
+        .map(([name, value]) => ({ name, value }))
+        .sort((a, b) => b.value - a.value);
+    }
+
+    // Intern Contribution Split calculation based on internSplitSource dropdown ("project" vs "raw_data")
     const internContributions: Record<string, number> = {};
-    myProjectDatasets.forEach((d) => {
-      if (d.owner && myInterns.has(d.owner)) {
+    const targetDatasets = internSplitSource === "project" ? myProjectDatasets : myRawDatasets;
+    targetDatasets.forEach((d) => {
+      if (d.owner && (myInterns.has(d.owner) || users.some((u) => u.username === d.owner && u.role === "intern"))) {
         internContributions[d.owner] = (internContributions[d.owner] || 0) + 1;
       }
     });
@@ -321,10 +350,10 @@ export default function AnalyticsPage() {
       .map(([name, value]) => ({ name, value }))
       .sort((a, b) => b.value - a.value);
 
-    // Category distribution in my projects
+    // Category distribution in admin's datasets
     const categories: Record<string, number> = {};
-    myProjectDatasets.forEach((d) => {
-      const cat = d["lab/dept"] || "Unclassified";
+    allAdminDatasets.forEach((d) => {
+      const cat = d["lab/dept"] || d.department || "Unclassified";
       categories[cat] = (categories[cat] || 0) + 1;
     });
 
@@ -335,13 +364,13 @@ export default function AnalyticsPage() {
     return {
       projectsCount: myProjects.length,
       internsCount: myInterns.size,
-      totalImages: myProjectDatasets.length,
-      projectShareData,
+      totalImages: allAdminDatasets.length,
+      imageVolumeData,
       internContributionData,
       categoryData,
-      myProjectDatasets,
+      allAdminDatasets,
     };
-  }, [isAdmin, projects, datasets, username]);
+  }, [isAdmin, projects, datasets, username, imageVolumeSource, internSplitSource, users]);
 
   const handleDownloadReport = () => {
     if (!reportSummary) return;
@@ -371,19 +400,14 @@ export default function AnalyticsPage() {
   };
 
   return (
-    <div className="relative flex h-screen overflow-hidden bg-zinc-950">
-      <MouseTracker />
-      <div className="relative z-10 flex w-full">
-        <Sidebar />
-        <main className="flex flex-1 flex-col overflow-hidden">
-          <Topbar />
-          <div className="flex-1 overflow-auto p-8">
+    <AppShell>
+      <div className="flex-1 overflow-auto p-8">
 
             {/* Header */}
             <div className="mb-8 flex items-center justify-between">
               <div>
                 <h1 className="text-3xl font-bold text-white">Analytics</h1>
-                <p className="mt-2 text-zinc-500">
+                <p className="mt-2 text-zinc-300">
                   {isSuperadmin 
                     ? "Detailed insights on Admin management and Intern productivity." 
                     : isAdmin 
@@ -408,37 +432,37 @@ export default function AnalyticsPage() {
                     <div className="space-y-4 py-2">
                       <div className="grid grid-cols-2 gap-3 bg-zinc-950/60 p-4 border border-zinc-800/80 rounded-xl text-sm">
                         <div>
-                          <p className="text-zinc-500 text-xs">Contributor</p>
+                          <p className="text-zinc-300 text-sm">Contributor</p>
                           <p className="font-semibold text-white mt-0.5">{username}</p>
                         </div>
                         <div>
-                          <p className="text-zinc-500 text-xs">Role</p>
+                          <p className="text-zinc-300 text-sm">Role</p>
                           <p className="font-semibold text-emerald-400 mt-0.5 capitalize">{role}</p>
                         </div>
                         <div>
-                          <p className="text-zinc-500 text-xs">Total Active Period</p>
+                          <p className="text-zinc-300 text-sm">Total Active Period</p>
                           <p className="font-semibold text-white mt-0.5">{reportSummary.monthsCount} Month(s)</p>
                         </div>
                         <div>
-                          <p className="text-zinc-500 text-xs">Total Images Uploaded</p>
+                          <p className="text-zinc-300 text-sm">Total Images Uploaded</p>
                           <p className="font-semibold text-white mt-0.5">{reportSummary.totalUploads}</p>
                         </div>
                       </div>
 
                       <div className="space-y-2">
-                        <p className="text-xs uppercase font-semibold text-zinc-500 tracking-wider">Month-by-Month Summary</p>
+                        <p className="text-sm uppercase font-semibold text-zinc-300 tracking-wider">Month-by-Month Summary</p>
                         <div className="max-h-60 overflow-y-auto space-y-2 pr-1 [scrollbar-color:#3f3f46_transparent]">
                           {reportSummary.months.length === 0 ? (
-                            <p className="text-zinc-500 text-center py-6 text-sm">No uploads recorded yet.</p>
+                            <p className="text-zinc-300 text-center py-6 text-sm">No uploads recorded yet.</p>
                           ) : (
                             reportSummary.months.map((m) => (
-                              <div key={m.monthKey} className="border border-zinc-850 bg-zinc-950/20 p-3 rounded-lg flex flex-col gap-1 text-xs">
+                              <div key={m.monthKey} className="border border-zinc-850 bg-zinc-950/20 p-3 rounded-lg flex flex-col gap-1 text-sm">
                                 <p className="font-semibold text-white text-sm">{m.label}</p>
-                                <div className="flex gap-4 text-zinc-400 mt-1">
+                                <div className="flex gap-4 text-zinc-200 mt-1">
                                   <span>Images: <strong className="text-zinc-200">{m.imagesCount}</strong></span>
                                   <span>Datasets: <strong className="text-zinc-200">{m.datasetsCount}</strong></span>
                                 </div>
-                                <p className="text-zinc-500 mt-1">Categories: {m.categories.join(", ")}</p>
+                                <p className="text-zinc-300 mt-1">Categories: {m.categories.join(", ")}</p>
                               </div>
                             ))
                           )}
@@ -448,14 +472,14 @@ export default function AnalyticsPage() {
                       <div className="flex justify-end gap-2 pt-2 border-t border-zinc-800">
                         <button
                           onClick={() => setReportOpen(false)}
-                          className="rounded-lg border border-zinc-700 bg-zinc-800 px-4 py-2 text-xs font-semibold text-zinc-300 hover:bg-zinc-700 transition"
+                          className="rounded-lg border border-zinc-700 bg-zinc-800 px-4 py-2 text-sm font-semibold text-zinc-300 hover:bg-zinc-700 transition"
                         >
                           Close
                         </button>
                         <button
                           onClick={handleDownloadReport}
                           disabled={reportSummary.totalUploads === 0}
-                          className="flex items-center gap-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 px-4 py-2 text-xs font-semibold text-zinc-950 transition disabled:opacity-40"
+                          className="flex items-center gap-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 px-4 py-2 text-sm font-semibold text-zinc-950 transition disabled:opacity-40"
                         >
                           <Download size={13} />
                           Download Report
@@ -468,7 +492,7 @@ export default function AnalyticsPage() {
             </div>
 
             {loading ? (
-              <div className="flex h-60 items-center justify-center text-zinc-500">
+              <div className="flex h-60 items-center justify-center text-zinc-300">
                 <div className="h-8 w-8 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent" />
               </div>
             ) : (
@@ -478,53 +502,89 @@ export default function AnalyticsPage() {
                 {isSuperadmin && superadminAnalytics && (
                   <>
                     <div className="grid gap-5 md:grid-cols-4">
-                      <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
+                      <div className="group relative overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5 transition-all duration-300 hover:border-emerald-500/30 hover:shadow-[0_0_24px_rgba(16,185,129,0.10)]">
                         <div className="flex h-10 w-10 items-center justify-center rounded-xl border text-emerald-300 border-emerald-500/25 bg-emerald-500/10"><Images size={18} /></div>
-                        <p className="mt-5 text-2xl font-bold text-white">{datasets.length}</p>
-                        <p className="mt-1 text-[13px] font-medium text-zinc-400">Total Images</p>
+                        <p className="mt-5 text-2xl font-bold text-emerald-400">{datasets.length}</p>
+                        <p className="mt-1 text-sm font-medium text-zinc-400">Total Images</p>
+                        <div className="pointer-events-none absolute -bottom-6 -right-6 h-20 w-20 rounded-full bg-emerald-500/5 blur-xl" />
                       </div>
-                      <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
+                      <div className="group relative overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5 transition-all duration-300 hover:border-violet-500/30 hover:shadow-[0_0_24px_rgba(139,92,246,0.10)]">
                         <div className="flex h-10 w-10 items-center justify-center rounded-xl border text-violet-300 border-violet-500/25 bg-violet-500/10"><Crown size={18} /></div>
-                        <p className="mt-5 text-2xl font-bold text-white">{users.filter(u => u.role === "admin").length}</p>
-                        <p className="mt-1 text-[13px] font-medium text-zinc-400">Total Admins</p>
+                        <p className="mt-5 text-2xl font-bold text-violet-400">{users.filter(u => u.role === "admin").length}</p>
+                        <p className="mt-1 text-sm font-medium text-zinc-400">Total Admins</p>
+                        <div className="pointer-events-none absolute -bottom-6 -right-6 h-20 w-20 rounded-full bg-violet-500/5 blur-xl" />
                       </div>
-                      <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
+                      <div className="group relative overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5 transition-all duration-300 hover:border-amber-500/30 hover:shadow-[0_0_24px_rgba(245,158,11,0.10)]">
                         <div className="flex h-10 w-10 items-center justify-center rounded-xl border text-amber-300 border-amber-500/25 bg-amber-500/10"><Users size={18} /></div>
-                        <p className="mt-5 text-2xl font-bold text-white">{users.filter(u => u.role === "intern").length}</p>
-                        <p className="mt-1 text-[13px] font-medium text-zinc-400">Total Interns</p>
+                        <p className="mt-5 text-2xl font-bold text-amber-400">{users.filter(u => u.role === "intern").length}</p>
+                        <p className="mt-1 text-sm font-medium text-zinc-400">Total Interns</p>
+                        <div className="pointer-events-none absolute -bottom-6 -right-6 h-20 w-20 rounded-full bg-amber-500/5 blur-xl" />
                       </div>
-                      <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-xl border text-sky-300 border-sky-500/25 bg-sky-500/10"><Database size={18} /></div>
-                        <p className="mt-5 text-2xl font-bold text-white">{projects.length}</p>
-                        <p className="mt-1 text-[13px] font-medium text-zinc-400">Total Projects</p>
+                      <div className="group relative overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5 transition-all duration-300 hover:border-cyan-500/30 hover:shadow-[0_0_24px_rgba(6,182,212,0.10)]">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-xl border text-cyan-300 border-cyan-500/25 bg-cyan-500/10"><Database size={18} /></div>
+                        <p className="mt-5 text-2xl font-bold text-cyan-400">{projects.length}</p>
+                        <p className="mt-1 text-sm font-medium text-zinc-400">Total Projects</p>
+                        <div className="pointer-events-none absolute -bottom-6 -right-6 h-20 w-20 rounded-full bg-cyan-500/5 blur-xl" />
                       </div>
                     </div>
 
                     {/* Superadmin Visual Comparison Charts */}
                     <div className="grid gap-6 xl:grid-cols-2">
-                      <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-5">
-                        <h3 className="font-semibold text-white text-sm mb-4">Admins Collection Progress</h3>
+                      <div className="rounded-2xl border border-zinc-800/80 bg-zinc-900/60 p-5 hover:border-violet-500/30 transition-all duration-300 backdrop-blur-md shadow-lg">
+                        <div className="flex items-center gap-2 mb-5">
+                          <span className="h-2.5 w-2.5 rounded-full bg-violet-400 shadow-[0_0_8px_rgba(139,92,246,0.6)]" />
+                          <h3 className="font-semibold text-white text-sm">Admins — Collection Progress</h3>
+                        </div>
                         <div className="h-64">
                           <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={superadminAnalytics.adminStats} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                              <XAxis dataKey="admin" tick={{ fill: "#a1a1aa", fontSize: 10 }} />
-                              <YAxis tick={{ fill: "#71717a", fontSize: 10 }} />
-                              <Tooltip cursor={{ fill: "rgba(255,255,255,0.04)" }} contentStyle={{ background: "#18181b", border: "1px solid #27272a", borderRadius: "10px", color: "#f4f4f5" }} />
-                              <Bar dataKey="totalImages" name="Images Collected" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
-                            </BarChart>
+                            <ComposedChart data={superadminAnalytics.adminStats} margin={{ top: 15, right: 15, left: -20, bottom: 0 }}>
+                              <defs>
+                                <linearGradient id="adminBarGrad" x1="0" y1="0" x2="0" y2="1">
+                                  <stop offset="0%" stopColor="#8b5cf6" stopOpacity={0.4}/>
+                                  <stop offset="100%" stopColor="#6d28d9" stopOpacity={0.08}/>
+                                </linearGradient>
+                                <linearGradient id="goldLineGrad1" x1="0" y1="0" x2="1" y2="0">
+                                  <stop offset="0%" stopColor="#fba953"/>
+                                  <stop offset="50%" stopColor="#f59e0b"/>
+                                  <stop offset="100%" stopColor="#fbbf24"/>
+                                </linearGradient>
+                              </defs>
+                              <XAxis dataKey="admin" tick={{ fill: "#a1a1aa", fontSize: 11 }} axisLine={false} tickLine={false} />
+                              <YAxis tick={{ fill: "#71717a", fontSize: 11 }} axisLine={false} tickLine={false} />
+                              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                              <Tooltip cursor={{ fill: "rgba(255,255,255,0.03)" }} contentStyle={TOOLTIP_STYLE} />
+                              <Bar dataKey="totalImages" name="Images Collected" fill="url(#adminBarGrad)" radius={[8, 8, 0, 0]} barSize={28} />
+                              <Line type="monotone" dataKey="totalImages" name="Trend" stroke="url(#goldLineGrad1)" strokeWidth={3} dot={{ r: 5, fill: "#fba953", stroke: "#0f0f11", strokeWidth: 2 }} activeDot={{ r: 7, fill: "#fba953", stroke: "#ffffff", strokeWidth: 2 }} />
+                            </ComposedChart>
                           </ResponsiveContainer>
                         </div>
                       </div>
-                      <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-5">
-                        <h3 className="font-semibold text-white text-sm mb-4">Intern Upload Contribution (Top 8)</h3>
+                      <div className="rounded-2xl border border-zinc-800/80 bg-zinc-900/60 p-5 hover:border-emerald-500/30 transition-all duration-300 backdrop-blur-md shadow-lg">
+                        <div className="flex items-center gap-2 mb-5">
+                          <span className="h-2.5 w-2.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.6)]" />
+                          <h3 className="font-semibold text-white text-sm">Interns — Upload Contribution (Top 8)</h3>
+                        </div>
                         <div className="h-64">
                           <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={superadminAnalytics.internStats.slice(0, 8)} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                              <XAxis dataKey="intern" tick={{ fill: "#a1a1aa", fontSize: 10 }} />
-                              <YAxis tick={{ fill: "#71717a", fontSize: 10 }} />
-                              <Tooltip cursor={{ fill: "rgba(255,255,255,0.04)" }} contentStyle={{ background: "#18181b", border: "1px solid #27272a", borderRadius: "10px", color: "#f4f4f5" }} />
-                              <Bar dataKey="uploadedImages" name="Images Uploaded" fill="#10b981" radius={[4, 4, 0, 0]} />
-                            </BarChart>
+                            <ComposedChart data={superadminAnalytics.internStats.slice(0, 8)} margin={{ top: 15, right: 15, left: -20, bottom: 0 }}>
+                              <defs>
+                                <linearGradient id="internBarGrad" x1="0" y1="0" x2="0" y2="1">
+                                  <stop offset="0%" stopColor="#10b981" stopOpacity={0.4}/>
+                                  <stop offset="100%" stopColor="#059669" stopOpacity={0.08}/>
+                                </linearGradient>
+                                <linearGradient id="emeraldLineGrad1" x1="0" y1="0" x2="1" y2="0">
+                                  <stop offset="0%" stopColor="#34d399"/>
+                                  <stop offset="50%" stopColor="#10b981"/>
+                                  <stop offset="100%" stopColor="#059669"/>
+                                </linearGradient>
+                              </defs>
+                              <XAxis dataKey="intern" tick={{ fill: "#a1a1aa", fontSize: 11 }} axisLine={false} tickLine={false} />
+                              <YAxis tick={{ fill: "#71717a", fontSize: 11 }} axisLine={false} tickLine={false} />
+                              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                              <Tooltip cursor={{ fill: "rgba(255,255,255,0.03)" }} contentStyle={TOOLTIP_STYLE} />
+                              <Bar dataKey="uploadedImages" name="Images Uploaded" fill="url(#internBarGrad)" radius={[8, 8, 0, 0]} barSize={28} />
+                              <Line type="monotone" dataKey="uploadedImages" name="Upload Trend" stroke="url(#emeraldLineGrad1)" strokeWidth={3} dot={{ r: 5, fill: "#34d399", stroke: "#0f0f11", strokeWidth: 2 }} activeDot={{ r: 7, fill: "#34d399", stroke: "#ffffff", strokeWidth: 2 }} />
+                            </ComposedChart>
                           </ResponsiveContainer>
                         </div>
                       </div>
@@ -536,28 +596,32 @@ export default function AnalyticsPage() {
                     </div>
 
                     {/* Admin Management Section */}
-                    <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6">
-                      <div className="flex items-center gap-2 mb-4">
-                        <Crown size={18} className="text-violet-300" />
-                        <h2 className="text-lg font-semibold text-white">Admin Management Details</h2>
+                    <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6 hover:border-violet-500/20 transition-colors duration-300">
+                      <div className="flex items-center gap-2.5 mb-5">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-500/10 border border-violet-500/20">
+                          <Crown size={15} className="text-violet-400" />
+                        </div>
+                        <h2 className="text-base font-semibold text-white">Admin Management Details</h2>
                       </div>
                       <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
+                        <table className="w-full text-base">
                           <thead>
-                            <tr className="border-b border-zinc-800 text-left text-zinc-500">
-                              <th className="pb-3 text-xs font-semibold uppercase tracking-wider">Admin Username</th>
-                              <th className="pb-3 text-xs font-semibold uppercase tracking-wider">Projects Managed</th>
-                              <th className="pb-3 text-xs font-semibold uppercase tracking-wider">Assigned Interns</th>
-                              <th className="pb-3 text-right text-xs font-semibold uppercase tracking-wider">Total Images Collected</th>
+                            <tr className="border-b border-zinc-800/60 text-left">
+                              <th className="pb-3 text-xs font-semibold uppercase tracking-widest text-zinc-500">Admin Username</th>
+                              <th className="pb-3 text-xs font-semibold uppercase tracking-widest text-zinc-500">Projects</th>
+                              <th className="pb-3 text-xs font-semibold uppercase tracking-widest text-zinc-500">Interns</th>
+                              <th className="pb-3 text-right text-xs font-semibold uppercase tracking-widest text-zinc-500">Images</th>
                             </tr>
                           </thead>
                           <tbody>
                             {superadminAnalytics.adminStats.map((stat) => (
-                              <tr key={stat.admin} className="border-b border-zinc-800/40 last:border-0 hover:bg-zinc-800/10">
+                              <tr key={stat.admin} className="border-b border-zinc-800/30 last:border-0 hover:bg-zinc-800/20 transition-colors">
                                 <td className="py-3.5 font-semibold text-white">{stat.admin}</td>
                                 <td className="py-3.5 text-zinc-300 font-mono">{stat.projectsCount}</td>
-                                <td className="py-3.5 text-zinc-300 font-mono">{stat.internsCount}</td>
-                                <td className="py-3.5 text-right text-emerald-300 font-semibold font-mono">{stat.totalImages}</td>
+                                <td className="py-3.5 text-amber-400 font-mono font-semibold">{stat.internsCount}</td>
+                                <td className="py-3.5 text-right font-mono">
+                                  <span className="rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-sm font-bold text-emerald-400">{stat.totalImages}</span>
+                                </td>
                               </tr>
                             ))}
                           </tbody>
@@ -566,28 +630,32 @@ export default function AnalyticsPage() {
                     </div>
 
                     {/* Intern Contribution Section */}
-                    <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6">
-                      <div className="flex items-center gap-2 mb-4">
-                        <ShieldCheck size={18} className="text-emerald-400" />
-                        <h2 className="text-lg font-semibold text-white">Intern Contribution Details</h2>
+                    <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6 hover:border-emerald-500/20 transition-colors duration-300">
+                      <div className="flex items-center gap-2.5 mb-5">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+                          <ShieldCheck size={15} className="text-emerald-400" />
+                        </div>
+                        <h2 className="text-base font-semibold text-white">Intern Contribution Details</h2>
                       </div>
                       <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
+                        <table className="w-full text-base">
                           <thead>
-                            <tr className="border-b border-zinc-800 text-left text-zinc-500">
-                              <th className="pb-3 text-xs font-semibold uppercase tracking-wider">Intern Username</th>
-                              <th className="pb-3 text-xs font-semibold uppercase tracking-wider">Images Uploaded</th>
-                              <th className="pb-3 text-xs font-semibold uppercase tracking-wider">Active Projects</th>
-                              <th className="pb-3 text-xs font-semibold uppercase tracking-wider">Assigned Project Names</th>
+                            <tr className="border-b border-zinc-800/60 text-left">
+                              <th className="pb-3 text-xs font-semibold uppercase tracking-widest text-zinc-500">Intern</th>
+                              <th className="pb-3 text-xs font-semibold uppercase tracking-widest text-zinc-500">Images</th>
+                              <th className="pb-3 text-xs font-semibold uppercase tracking-widest text-zinc-500">Projects</th>
+                              <th className="pb-3 text-xs font-semibold uppercase tracking-widest text-zinc-500">Project Names</th>
                             </tr>
                           </thead>
                           <tbody>
                             {superadminAnalytics.internStats.map((stat) => (
-                              <tr key={stat.intern} className="border-b border-zinc-800/40 last:border-0 hover:bg-zinc-800/10">
+                              <tr key={stat.intern} className="border-b border-zinc-800/30 last:border-0 hover:bg-zinc-800/20 transition-colors">
                                 <td className="py-3.5 font-semibold text-white">{stat.intern}</td>
-                                <td className="py-3.5 text-emerald-300 font-semibold font-mono">{stat.uploadedImages}</td>
-                                <td className="py-3.5 text-zinc-300 font-mono">{stat.projectsCount}</td>
-                                <td className="py-3.5 text-zinc-400 max-w-xs truncate">{stat.projects}</td>
+                                <td className="py-3.5 font-mono">
+                                  <span className="rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-sm font-bold text-emerald-400">{stat.uploadedImages}</span>
+                                </td>
+                                <td className="py-3.5 text-cyan-400 font-mono font-semibold">{stat.projectsCount}</td>
+                                <td className="py-3.5 text-zinc-300 max-w-xs truncate">{stat.projects}</td>
                               </tr>
                             ))}
                           </tbody>
@@ -601,65 +669,110 @@ export default function AnalyticsPage() {
                 {isAdmin && adminAnalytics && (
                   <>
                     <div className="grid gap-5 md:grid-cols-3">
-                      <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-xl border text-sky-300 border-sky-500/25 bg-sky-500/10"><Database size={18} /></div>
-                        <p className="mt-5 text-2xl font-bold text-white">{adminAnalytics.projectsCount}</p>
-                        <p className="mt-1 text-[13px] font-medium text-zinc-400">My Projects</p>
+                      <div className="group relative overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5 transition-all duration-300 hover:border-cyan-500/30 hover:shadow-[0_0_24px_rgba(6,182,212,0.10)]">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-xl border text-cyan-300 border-cyan-500/25 bg-cyan-500/10"><Database size={18} /></div>
+                        <p className="mt-5 text-2xl font-bold text-cyan-400">{adminAnalytics.projectsCount}</p>
+                        <p className="mt-1 text-sm font-medium text-zinc-400">My Projects</p>
+                        <div className="pointer-events-none absolute -bottom-6 -right-6 h-20 w-20 rounded-full bg-cyan-500/5 blur-xl" />
                       </div>
-                      <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
+                      <div className="group relative overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5 transition-all duration-300 hover:border-amber-500/30 hover:shadow-[0_0_24px_rgba(245,158,11,0.10)]">
                         <div className="flex h-10 w-10 items-center justify-center rounded-xl border text-amber-300 border-amber-500/25 bg-amber-500/10"><Users size={18} /></div>
-                        <p className="mt-5 text-2xl font-bold text-white">{adminAnalytics.internsCount}</p>
-                        <p className="mt-1 text-[13px] font-medium text-zinc-400">Assigned Interns</p>
+                        <p className="mt-5 text-2xl font-bold text-amber-400">{adminAnalytics.internsCount}</p>
+                        <p className="mt-1 text-sm font-medium text-zinc-400">Assigned Interns</p>
+                        <div className="pointer-events-none absolute -bottom-6 -right-6 h-20 w-20 rounded-full bg-amber-500/5 blur-xl" />
                       </div>
-                      <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
+                      <div className="group relative overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5 transition-all duration-300 hover:border-emerald-500/30 hover:shadow-[0_0_24px_rgba(16,185,129,0.10)]">
                         <div className="flex h-10 w-10 items-center justify-center rounded-xl border text-emerald-300 border-emerald-500/25 bg-emerald-500/10"><Images size={18} /></div>
-                        <p className="mt-5 text-2xl font-bold text-white">{adminAnalytics.totalImages}</p>
-                        <p className="mt-1 text-[13px] font-medium text-zinc-400">Total Images in My Projects</p>
+                        <p className="mt-5 text-2xl font-bold text-emerald-400">{adminAnalytics.totalImages}</p>
+                        <p className="mt-1 text-sm font-medium text-zinc-400">Total Managed Images</p>
+                        <div className="pointer-events-none absolute -bottom-6 -right-6 h-20 w-20 rounded-full bg-emerald-500/5 blur-xl" />
                       </div>
                     </div>
 
                     <div className="grid gap-6 xl:grid-cols-2">
-                      {/* Project share donut */}
-                      <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-5">
-                        <h3 className="font-semibold text-white text-sm mb-4">Project Image Volumes</h3>
-                        <div className="flex flex-col sm:flex-row items-center gap-6">
-                          <div className="relative h-48 w-48 shrink-0">
-                            <ResponsiveContainer width="100%" height="100%">
-                              <PieChart>
-                                <Pie data={adminAnalytics.projectShareData} innerRadius={45} outerRadius={65} paddingAngle={3} dataKey="value">
-                                  {adminAnalytics.projectShareData.map((entry, index) => (
-                                    <Cell key={entry.name} fill={CHART_COLORS[index % CHART_COLORS.length]} />
-                                  ))}
-                                </Pie>
-                                <Tooltip contentStyle={{ background: "#18181b", border: "1px solid #27272a", borderRadius: "10px", color: "#f4f4f5" }} />
-                              </PieChart>
-                            </ResponsiveContainer>
+                      {/* Image Volumes donut */}
+                      <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-5 hover:border-cyan-500/20 transition-colors duration-300">
+                        <div className="flex items-center justify-between gap-2 mb-5">
+                          <div className="flex items-center gap-2">
+                            <span className="h-2 w-2 rounded-full bg-cyan-400" />
+                            <h3 className="font-semibold text-white text-sm">Image Volumes</h3>
                           </div>
-                          <div className="flex-1 space-y-2 w-full">
-                            {adminAnalytics.projectShareData.slice(0, 4).map((entry, index) => (
-                              <div key={entry.name} className="flex items-center justify-between text-xs bg-zinc-950/40 border border-zinc-800/40 rounded-xl px-3 py-1.5">
-                                <div className="flex items-center gap-2 truncate">
-                                  <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: CHART_COLORS[index % CHART_COLORS.length] }} />
-                                  <span className="text-zinc-300 font-medium truncate">{entry.name}</span>
-                                </div>
-                                <span className="text-white font-mono font-semibold shrink-0">{entry.value}</span>
-                              </div>
-                            ))}
-                          </div>
+                          <Select
+                            value={imageVolumeSource}
+                            onValueChange={(val) => setImageVolumeSource(val as "project" | "raw_data")}
+                          >
+                            <SelectTrigger className="w-[120px] h-8 border-zinc-800 bg-zinc-950/80 text-xs font-semibold text-zinc-300">
+                              <SelectValue placeholder="Source" />
+                            </SelectTrigger>
+                            <SelectContent className="border-zinc-800 bg-zinc-950 text-zinc-300">
+                              <SelectItem value="project">Project</SelectItem>
+                              <SelectItem value="raw_data">Raw Data</SelectItem>
+                            </SelectContent>
+                          </Select>
                         </div>
+                        {adminAnalytics.imageVolumeData.length === 0 ? (
+                          <p className="text-sm text-zinc-300 py-12 text-center">
+                            No {imageVolumeSource === "project" ? "project" : "raw data"} volumes recorded.
+                          </p>
+                        ) : (
+                          <div className="flex flex-col sm:flex-row items-center gap-6">
+                            <div className="relative h-48 w-48 shrink-0">
+                              <ResponsiveContainer width="100%" height="100%">
+                                <PieChart>
+                                  <Pie data={adminAnalytics.imageVolumeData} innerRadius={45} outerRadius={65} paddingAngle={3} dataKey="value">
+                                    {adminAnalytics.imageVolumeData.map((entry, index) => (
+                                      <Cell key={entry.name} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                                    ))}
+                                  </Pie>
+                                  <Tooltip contentStyle={{ background: "#18181b", border: "1px solid #27272a", borderRadius: "10px", color: "#f4f4f5" }} />
+                                </PieChart>
+                              </ResponsiveContainer>
+                            </div>
+                            <div className="flex-1 space-y-2 w-full max-h-48 overflow-y-auto pr-1 [scrollbar-width:thin] [scrollbar-color:#3f3f46_transparent]">
+                              {adminAnalytics.imageVolumeData.map((entry, index) => (
+                                <div key={entry.name} className="flex items-center justify-between text-sm bg-zinc-950/40 border border-zinc-800/40 rounded-xl px-3 py-1.5">
+                                  <div className="flex items-center gap-2 truncate">
+                                    <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: CHART_COLORS[index % CHART_COLORS.length] }} />
+                                    <span className="text-zinc-300 font-medium truncate">{entry.name}</span>
+                                  </div>
+                                  <span className="text-white font-mono font-semibold shrink-0">{entry.value}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
 
                       {/* Intern upload contribution list */}
-                      <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-5">
-                        <h3 className="font-semibold text-white text-sm mb-4">Intern Contribution Split</h3>
+                      <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-5 hover:border-amber-500/20 transition-colors duration-300">
+                        <div className="flex items-center justify-between gap-2 mb-5">
+                          <div className="flex items-center gap-2">
+                            <span className="h-2 w-2 rounded-full bg-amber-400" />
+                            <h3 className="font-semibold text-white text-sm">Intern Contribution Split</h3>
+                          </div>
+                          <Select
+                            value={internSplitSource}
+                            onValueChange={(val) => setInternSplitSource(val as "project" | "raw_data")}
+                          >
+                            <SelectTrigger className="w-[120px] h-8 border-zinc-800 bg-zinc-950/80 text-xs font-semibold text-zinc-300">
+                              <SelectValue placeholder="Source" />
+                            </SelectTrigger>
+                            <SelectContent className="border-zinc-800 bg-zinc-950 text-zinc-300">
+                              <SelectItem value="project">Project</SelectItem>
+                              <SelectItem value="raw_data">Raw Data</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
                         {adminAnalytics.internContributionData.length === 0 ? (
-                          <p className="text-xs text-zinc-500 py-12 text-center">No intern uploads registered under your projects yet.</p>
+                          <p className="text-sm text-zinc-300 py-12 text-center">
+                            No intern uploads registered under {internSplitSource === "project" ? "projects" : "raw data"} yet.
+                          </p>
                         ) : (
                           <div className="h-48 overflow-y-auto space-y-2 pr-1 [scrollbar-color:#3f3f46_transparent]">
                             {adminAnalytics.internContributionData.map((item, index) => (
-                              <div key={item.name} className="flex items-center justify-between text-xs bg-zinc-950/45 border border-zinc-800/45 rounded-xl px-4 py-2.5">
+                              <div key={item.name} className="flex items-center justify-between text-sm bg-zinc-950/45 border border-zinc-800/45 rounded-xl px-4 py-2.5">
                                 <div className="flex items-center gap-2">
-                                  <span className="text-zinc-500 font-semibold">{index + 1}.</span>
+                                  <span className="text-zinc-300 font-semibold">{index + 1}.</span>
                                   <span className="text-white font-medium">{item.name}</span>
                                 </div>
                                 <span className="text-emerald-400 font-mono font-bold">{item.value} uploads</span>
@@ -670,18 +783,22 @@ export default function AnalyticsPage() {
                       </div>
                     </div>
 
-                    {/* Crop & Category Mix in Admin Projects */}
+                    {/* Crop & Category Mix in Admin Datasets */}
                     <div className="grid gap-6 xl:grid-cols-2">
-                      <CropDistribution datasets={adminAnalytics.myProjectDatasets} isLoading={loading} variant="analytics" />
-                      <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-5">
-                        <h3 className="font-semibold text-white text-sm mb-4">Category Distribution (in My Projects)</h3>
+                      <CropDistribution datasets={adminAnalytics.allAdminDatasets} isLoading={loading} variant="analytics" />
+                      <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-5 hover:border-amber-500/20 transition-colors duration-300">
+                        <div className="flex items-center gap-2 mb-5">
+                          <span className="h-2 w-2 rounded-full bg-amber-400" />
+                          <h3 className="font-semibold text-white text-sm">Category Distribution (in My Data)</h3>
+                        </div>
                         <div className="h-60">
                           <ResponsiveContainer width="100%" height="100%">
                             <BarChart data={adminAnalytics.categoryData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                              <XAxis dataKey="name" tick={{ fill: "#a1a1aa", fontSize: 10 }} />
-                              <YAxis tick={{ fill: "#71717a", fontSize: 10 }} />
-                              <Tooltip cursor={{ fill: "rgba(255,255,255,0.04)" }} contentStyle={{ background: "#18181b", border: "1px solid #27272a", borderRadius: "10px", color: "#f4f4f5" }} />
-                              <Bar dataKey="value" name="Images count" fill="#f59e0b" radius={[4, 4, 0, 0]}>
+                              <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
+                              <XAxis dataKey="name" tick={{ fill: "#71717a", fontSize: 11 }} axisLine={false} tickLine={false} />
+                              <YAxis tick={{ fill: "#52525b", fontSize: 11 }} axisLine={false} tickLine={false} />
+                              <Tooltip cursor={{ fill: "rgba(245,158,11,0.06)" }} contentStyle={TOOLTIP_STYLE} />
+                              <Bar dataKey="value" name="Images count" fill="#f59e0b" radius={[6, 6, 0, 0]}>
                                 {adminAnalytics.categoryData.map((entry) => (
                                   <Cell key={entry.name} fill={CATEGORY_COLORS[entry.name] || "#a1a1aa"} />
                                 ))}
@@ -698,37 +815,42 @@ export default function AnalyticsPage() {
                 {isInternOrOther && (
                   <>
                     <div className="grid gap-5 md:grid-cols-3">
-                      <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
+                      <div className="group relative overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5 transition-all duration-300 hover:border-emerald-500/30 hover:shadow-[0_0_24px_rgba(16,185,129,0.10)]">
                         <div className="flex h-10 w-10 items-center justify-center rounded-xl border text-emerald-300 border-emerald-500/25 bg-emerald-500/10"><Images size={18} /></div>
-                        <p className="mt-5 text-2xl font-bold text-white">{datasets.length}</p>
-                        <p className="mt-1 text-[13px] font-medium text-zinc-400">My Uploaded Images</p>
+                        <p className="mt-5 text-2xl font-bold text-emerald-400">{datasets.length}</p>
+                        <p className="mt-1 text-sm font-medium text-zinc-400">My Uploaded Images</p>
+                        <div className="pointer-events-none absolute -bottom-6 -right-6 h-20 w-20 rounded-full bg-emerald-500/5 blur-xl" />
                       </div>
-                      <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-xl border text-sky-300 border-sky-500/25 bg-sky-500/10"><Database size={18} /></div>
-                        <p className="mt-5 text-2xl font-bold text-white">{new Set(datasets.map(d => d.dataset_name)).size}</p>
-                        <p className="mt-1 text-[13px] font-medium text-zinc-400">My Datasets</p>
+                      <div className="group relative overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5 transition-all duration-300 hover:border-cyan-500/30 hover:shadow-[0_0_24px_rgba(6,182,212,0.10)]">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-xl border text-cyan-300 border-cyan-500/25 bg-cyan-500/10"><Database size={18} /></div>
+                        <p className="mt-5 text-2xl font-bold text-cyan-400">{new Set(datasets.map(d => d.dataset_name)).size}</p>
+                        <p className="mt-1 text-sm font-medium text-zinc-400">My Datasets</p>
+                        <div className="pointer-events-none absolute -bottom-6 -right-6 h-20 w-20 rounded-full bg-cyan-500/5 blur-xl" />
                       </div>
-                      <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
+                      <div className="group relative overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5 transition-all duration-300 hover:border-amber-500/30 hover:shadow-[0_0_24px_rgba(245,158,11,0.10)]">
                         <div className="flex h-10 w-10 items-center justify-center rounded-xl border text-amber-300 border-amber-500/25 bg-amber-500/10"><Clock3 size={18} /></div>
-                        <p className="mt-5 text-2xl font-bold text-white">
+                        <p className="mt-5 text-xl font-bold text-amber-400">
                           {datasets[0]?.timestamp ? new Date(datasets[0].timestamp).toLocaleDateString("en-IN") : "—"}
                         </p>
-                        <p className="mt-1 text-[13px] font-medium text-zinc-400">Last Upload Date</p>
+                        <p className="mt-1 text-sm font-medium text-zinc-400">Last Upload Date</p>
+                        <div className="pointer-events-none absolute -bottom-6 -right-6 h-20 w-20 rounded-full bg-amber-500/5 blur-xl" />
                       </div>
                     </div>
 
                     <div className="grid gap-6 xl:grid-cols-5">
                       {/* Timeline AreaChart */}
-                      <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-5 xl:col-span-3 flex flex-col justify-between">
-                        <div className="flex items-center justify-between mb-4">
-                          <h3 className="font-semibold text-white text-sm">My Collection Timeline Progress</h3>
+                      <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-5 xl:col-span-3 flex flex-col justify-between hover:border-emerald-500/20 transition-colors duration-300">
+                        <div className="flex items-center justify-between mb-5">
                           <div className="flex items-center gap-2">
-                            <span className="text-xs text-zinc-400 font-medium">Period:</span>
+                            <span className="h-2 w-2 rounded-full bg-emerald-400" />
+                            <h3 className="font-semibold text-white text-sm">My Collection Timeline</h3>
+                          </div>
+                          <div className="flex items-center gap-2">
                             <Select
                               value={internPeriod}
                               onValueChange={(val) => setInternPeriod(val as any)}
                             >
-                              <SelectTrigger className="w-[100px] h-8 border-zinc-800 bg-zinc-950 text-xs font-semibold text-zinc-300">
+                              <SelectTrigger className="w-[100px] h-8 border-zinc-800 bg-zinc-950/80 text-xs font-semibold text-zinc-300">
                                 <SelectValue placeholder="Period" />
                               </SelectTrigger>
                               <SelectContent className="border-zinc-800 bg-zinc-950 text-zinc-300">
@@ -742,21 +864,37 @@ export default function AnalyticsPage() {
                         </div>
                         <div className="h-64">
                           {personalProgress.length === 0 ? (
-                            <p className="text-xs text-zinc-500 py-24 text-center">No upload data recorded yet.</p>
+                            <p className="text-sm text-zinc-500 py-24 text-center">No upload data recorded yet.</p>
                           ) : (
                             <ResponsiveContainer width="100%" height="100%">
-                              <AreaChart data={personalProgress} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                              <AreaChart data={personalProgress} margin={{ top: 15, right: 15, left: -20, bottom: 0 }}>
                                 <defs>
-                                  <linearGradient id="colorCount" x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
-                                    <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                                  <linearGradient id="goldAreaGradient" x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="0%" stopColor="#fba953" stopOpacity={0.45}/>
+                                    <stop offset="50%" stopColor="#f59e0b" stopOpacity={0.15}/>
+                                    <stop offset="100%" stopColor="#f59e0b" stopOpacity={0}/>
+                                  </linearGradient>
+                                  <linearGradient id="goldLineGrad2" x1="0" y1="0" x2="1" y2="0">
+                                    <stop offset="0%" stopColor="#fba953"/>
+                                    <stop offset="50%" stopColor="#f59e0b"/>
+                                    <stop offset="100%" stopColor="#fbbf24"/>
                                   </linearGradient>
                                 </defs>
-                                <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
-                                <XAxis dataKey="month" tick={{ fill: "#a1a1aa", fontSize: 10 }} />
-                                <YAxis tick={{ fill: "#71717a", fontSize: 10 }} />
-                                <Tooltip contentStyle={{ background: "#18181b", border: "1px solid #27272a", borderRadius: "10px", color: "#f4f4f5" }} />
-                                <Area type="monotone" dataKey="count" name="Images" stroke="#10b981" strokeWidth={2} fillOpacity={1} fill="url(#colorCount)" />
+                                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                                <XAxis dataKey="month" tick={{ fill: "#a1a1aa", fontSize: 11 }} axisLine={false} tickLine={false} />
+                                <YAxis tick={{ fill: "#71717a", fontSize: 11 }} axisLine={false} tickLine={false} />
+                                <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ stroke: "#fba953", strokeWidth: 1.5, strokeDasharray: "4 4" }} />
+                                <Area 
+                                  type="monotone" 
+                                  dataKey="count" 
+                                  name="Images" 
+                                  stroke="url(#goldLineGrad2)" 
+                                  strokeWidth={3.5} 
+                                  fillOpacity={1} 
+                                  fill="url(#goldAreaGradient)" 
+                                  dot={{ r: 5, fill: "#fba953", stroke: "#0f0f11", strokeWidth: 2.5 }} 
+                                  activeDot={{ r: 8, fill: "#fba953", stroke: "#ffffff", strokeWidth: 2 }} 
+                                />
                               </AreaChart>
                             </ResponsiveContainer>
                           )}
@@ -764,26 +902,32 @@ export default function AnalyticsPage() {
                       </div>
 
                       {/* Category Mix PieChart */}
-                      <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-5 xl:col-span-2">
-                        <h3 className="font-semibold text-white text-sm mb-4">My Category Mix</h3>
+                      <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-5 xl:col-span-2 hover:border-violet-500/20 transition-colors duration-300">
+                        <div className="flex items-center gap-2 mb-5">
+                          <span className="h-2 w-2 rounded-full bg-violet-400" />
+                          <h3 className="font-semibold text-white text-sm">My Category Mix</h3>
+                        </div>
                         <div className="flex flex-col items-center">
                           <div className="h-44 w-44">
                             <ResponsiveContainer width="100%" height="100%">
                               <PieChart>
-                                <Pie data={personalCategoryMix} innerRadius={40} outerRadius={60} paddingAngle={3} dataKey="value">
+                                <Pie data={personalCategoryMix} innerRadius={42} outerRadius={62} paddingAngle={3} dataKey="value" strokeWidth={0}>
                                   {personalCategoryMix.map((entry) => (
                                     <Cell key={entry.name} fill={CATEGORY_COLORS[entry.name] || "#a1a1aa"} />
                                   ))}
                                 </Pie>
-                                <Tooltip contentStyle={{ background: "#18181b", border: "1px solid #27272a", borderRadius: "10px", color: "#f4f4f5" }} />
+                                <Tooltip contentStyle={TOOLTIP_STYLE} />
                               </PieChart>
                             </ResponsiveContainer>
                           </div>
-                          <div className="w-full mt-3 grid grid-cols-2 gap-1.5 text-[10px]">
+                          <div className="w-full mt-3 space-y-1.5">
                             {personalCategoryMix.map((entry) => (
-                              <div key={entry.name} className="flex items-center gap-1.5 truncate">
-                                <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: CATEGORY_COLORS[entry.name] || "#a1a1aa" }} />
-                                <span className="text-zinc-400 truncate">{entry.name} ({entry.value})</span>
+                              <div key={entry.name} className="flex items-center justify-between text-xs bg-zinc-950/40 border border-zinc-800/40 rounded-lg px-2.5 py-1.5">
+                                <div className="flex items-center gap-1.5 truncate">
+                                  <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: CATEGORY_COLORS[entry.name] || "#a1a1aa" }} />
+                                  <span className="text-zinc-300 truncate font-medium">{entry.name}</span>
+                                </div>
+                                <span className="text-white font-mono font-semibold shrink-0">{entry.value}</span>
                               </div>
                             ))}
                           </div>
@@ -804,9 +948,7 @@ export default function AnalyticsPage() {
 
               </div>
             )}
-          </div>
-        </main>
       </div>
-    </div>
+    </AppShell>
   );
 }

@@ -1,10 +1,12 @@
 import type { NextConfig } from "next";
 
 const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-const apiHost = new URL(apiUrl);
 
-const nextConfig: NextConfig = {
-  images: {
+let imageRemotePatterns: NextConfig["images"] = undefined;
+
+try {
+  const apiHost = new URL(apiUrl);
+  imageRemotePatterns = {
     remotePatterns: [
       {
         protocol: apiHost.protocol.replace(":", "") as "http" | "https",
@@ -13,13 +15,22 @@ const nextConfig: NextConfig = {
         pathname: "/image/**",
       },
     ],
-  },
+  };
+} catch {
+  imageRemotePatterns = undefined;
+}
+
+const nextConfig: NextConfig = {
+  // Allow other PCs on the LAN to access Next.js dev resources
+  allowedDevOrigins: ["172.31.58.232"],
+
+  ...(imageRemotePatterns ? { images: imageRemotePatterns } : {}),
+
   async rewrites() {
-    // Only proxy in local dev, so production (Vercel) keeps calling
-    // the real backend directly and isn't affected by this at all.
     if (process.env.NODE_ENV !== "development") {
       return [];
     }
+
     return [
       {
         source: "/api/:path*",

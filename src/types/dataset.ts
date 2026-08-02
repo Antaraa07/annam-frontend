@@ -4,6 +4,7 @@ export interface Dataset {
   dataset_name: string;
   owner: string;
   "lab/dept": string;
+  department?: string;
   version: string;
   description?: string;
   project_id?: string;

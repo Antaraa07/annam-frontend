@@ -31,14 +31,17 @@ export default function CropDistribution({ datasets, isLoading = false, variant 
       let t = (d.crop_type || "").trim();
       let n = (d.crop_name || "").trim();
 
-      // Completely filter out unspecified / NA crop types
-      if (t === "" || t.toUpperCase() === "NA" || t.toLowerCase() === "not specified") {
-        return;
+      // If crop_type is missing, empty, or NA, fall back to department/lab/dataset_name
+      if (!t || t.toUpperCase() === "NA" || t.toLowerCase() === "not specified") {
+        t = (d["lab/dept"] || d.department || d.dataset_name || "General Crop").trim();
       }
 
-      if (n === "" || n.toUpperCase() === "NA" || n.toLowerCase() === "not specified") {
-        n = "Unspecified Variety";
+      // If crop_name is missing, empty, or NA, fall back to label/dataset_name/variety
+      if (!n || n.toUpperCase() === "NA" || n.toLowerCase() === "not specified") {
+        n = (d.label || d.dataset_name || "Unspecified Variety").trim();
       }
+
+      if (!t) return;
 
       count += 1;
       typeCounts[t] = (typeCounts[t] || 0) + 1;
@@ -78,7 +81,7 @@ export default function CropDistribution({ datasets, isLoading = false, variant 
           </div>
           <div>
             <h2 className="text-lg font-semibold text-white tracking-tight">Crop Type Distribution</h2>
-            <p className="text-[13px] text-zinc-400 mt-0.5">
+            <p className="text-sm text-zinc-200 mt-0.5">
               {variant === "dashboard" 
                 ? "Key categorical metrics and varieties overview." 
                 : "Comparative analytics of crop groupings across database records."}
@@ -88,7 +91,7 @@ export default function CropDistribution({ datasets, isLoading = false, variant 
       </div>
 
       {totalCount === 0 ? (
-        <p className="text-sm text-zinc-500 py-12 text-center">No crop type classifications recorded yet.</p>
+        <p className="text-sm text-zinc-300 py-12 text-center">No crop type classifications recorded yet.</p>
       ) : variant === "dashboard" ? (
         /* ==================== 1. DASHBOARD VIEW (Interactive Cards Grid) ==================== */
         <div className="space-y-6">
@@ -110,14 +113,14 @@ export default function CropDistribution({ datasets, isLoading = false, variant 
                       <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
                       <span className="text-sm font-semibold text-white truncate">{entry.name}</span>
                     </div>
-                    <span className="rounded-lg bg-zinc-900 px-2 py-0.5 text-[11px] font-bold text-zinc-400 shrink-0">
+                    <span className="rounded-lg bg-zinc-900 px-2 py-0.5 text-xs font-bold text-zinc-200 shrink-0">
                       {percent}%
                     </span>
                   </div>
 
                   <div className="mt-4 flex items-baseline gap-2">
                     <span className="text-2xl font-extrabold text-white font-mono">{entry.value}</span>
-                    <span className="text-xs text-zinc-500">records</span>
+                    <span className="text-sm text-zinc-300">records</span>
                   </div>
 
                   {/* Visual Progress Bar */}
@@ -131,12 +134,12 @@ export default function CropDistribution({ datasets, isLoading = false, variant 
                   {/* Inline varieties summary */}
                   {cropVarieties.length > 0 && (
                     <div className="mt-4 border-t border-zinc-900/60 pt-3">
-                      <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 mb-1.5">Varieties:</p>
+                      <p className="text-xs font-semibold uppercase tracking-wider text-zinc-300 mb-1.5">Varieties:</p>
                       <div className="flex flex-wrap gap-1">
                         {cropVarieties.map(v => (
                           <span 
                             key={v.name} 
-                            className="inline-flex items-center rounded-md bg-zinc-900 border border-zinc-800/80 px-1.5 py-0.5 text-[10px] text-zinc-300 font-medium"
+                            className="inline-flex items-center rounded-md bg-zinc-900 border border-zinc-800/80 px-1.5 py-0.5 text-xs text-zinc-300 font-medium"
                           >
                             {v.name}
                           </span>
@@ -150,7 +153,7 @@ export default function CropDistribution({ datasets, isLoading = false, variant 
           </div>
 
           {/* Mini total overview indicator */}
-          <div className="flex items-center justify-between border-t border-zinc-800/50 pt-4 text-xs text-zinc-500">
+          <div className="flex items-center justify-between border-t border-zinc-800/50 pt-4 text-sm text-zinc-300">
             <span>Total specified records analyzed</span>
             <span className="font-bold text-emerald-400 font-mono">{totalCount} items</span>
           </div>
@@ -164,18 +167,20 @@ export default function CropDistribution({ datasets, isLoading = false, variant 
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={typeData} layout="vertical" margin={{ top: 5, right: 15, left: -5, bottom: 5 }}>
                   <XAxis type="number" hide />
-                  <YAxis dataKey="name" type="category" stroke="#a1a1aa" fontSize={11} axisLine={false} tickLine={false} width={100} />
+                  <YAxis dataKey="name" type="category" stroke="#a1a1aa" fontSize={12} axisLine={false} tickLine={false} width={100} />
                   <Tooltip
-                    cursor={{ fill: "rgba(255,255,255,0.04)" }}
+                    cursor={{ fill: "rgba(255,255,255,0.03)" }}
                     contentStyle={{
-                      background: "#18181b",
-                      border: "1px solid #27272a",
-                      borderRadius: "10px",
+                      background: "rgba(15, 15, 18, 0.92)",
+                      border: "1px solid rgba(255, 255, 255, 0.12)",
+                      borderRadius: "12px",
                       color: "#f4f4f5",
                       fontSize: "12px",
+                      boxShadow: "0 10px 30px rgba(0, 0, 0, 0.5)",
+                      backdropFilter: "blur(12px)",
                     }}
                   />
-                  <Bar dataKey="value" fill="#10b981" radius={[0, 4, 4, 0]}>
+                  <Bar dataKey="value" fill="#10b981" radius={[0, 8, 8, 0]} barSize={20}>
                     {typeData.map((entry, index) => (
                       <Cell key={entry.name} fill={CHART_COLORS[index % CHART_COLORS.length]} />
                     ))}
@@ -187,13 +192,13 @@ export default function CropDistribution({ datasets, isLoading = false, variant 
             {/* Detailed Legend table list */}
             <div className="mt-4 w-full space-y-1.5 max-h-36 overflow-y-auto pr-1 [scrollbar-width:thin] [scrollbar-color:#3f3f46_transparent]">
               {typeData.map((entry, index) => (
-                <div key={entry.name} className="flex items-center justify-between text-xs bg-zinc-950/40 border border-zinc-800/40 rounded-lg px-2.5 py-1">
+                <div key={entry.name} className="flex items-center justify-between text-sm bg-zinc-950/40 border border-zinc-800/40 rounded-lg px-2.5 py-1">
                   <div className="flex items-center gap-2 truncate">
                     <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: CHART_COLORS[index % CHART_COLORS.length] }} />
                     <span className="text-zinc-300 font-medium truncate">{entry.name}</span>
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
-                    <span className="text-zinc-500 font-mono">{entry.value}</span>
+                    <span className="text-zinc-300 font-mono">{entry.value}</span>
                     <span className="text-white font-semibold">{Math.round((entry.value / totalCount) * 100)}%</span>
                   </div>
                 </div>
@@ -203,19 +208,19 @@ export default function CropDistribution({ datasets, isLoading = false, variant 
 
           {/* Right Panel: Varieties Breakdown */}
           <div className="flex flex-col h-full justify-start border-l border-zinc-800/40 pl-0 md:pl-6">
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-3 flex items-center gap-1.5">
+            <h3 className="text-sm font-semibold uppercase tracking-wider text-zinc-300 mb-3 flex items-center gap-1.5">
               <BarChart2 size={13} className="text-emerald-400" />
               Crop Names Breakdown
             </h3>
             {nameData.length === 0 ? (
-              <p className="text-xs text-zinc-500 py-12 text-center">No specific crop names found.</p>
+              <p className="text-sm text-zinc-300 py-12 text-center">No specific crop names found.</p>
             ) : (
               <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1 [scrollbar-width:thin] [scrollbar-color:#3f3f46_transparent]">
                 {nameData.map((item) => (
-                  <div key={item.name} className="flex items-center justify-between text-xs bg-zinc-950/40 border border-zinc-800/40 rounded-xl px-3.5 py-2">
+                  <div key={item.name} className="flex items-center justify-between text-sm bg-zinc-950/40 border border-zinc-800/40 rounded-xl px-3.5 py-2">
                     <div className="flex flex-col min-w-0">
                       <span className="text-white font-medium truncate">{item.name}</span>
-                      <span className="text-[10px] text-zinc-500 truncate">{item.type}</span>
+                      <span className="text-xs text-zinc-300 truncate">{item.type}</span>
                     </div>
                     <span className="text-emerald-400 font-mono font-bold shrink-0">{item.count} items</span>
                   </div>

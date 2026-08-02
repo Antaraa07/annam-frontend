@@ -2,11 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Crown, Database, Images, RefreshCw, ShieldCheck, Users } from "lucide-react";
-import { Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Bar, BarChart, ComposedChart, Line, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
-import Sidebar from "@/components/layout/sidebar";
-import Topbar from "@/components/layout/topbar";
-import MouseTracker from "@/components/ui/mouse-tracker";
+import AppShell from "@/components/layout/app-shell";
 import type { Dataset } from "@/types/dataset";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -99,13 +97,8 @@ export default function SuperadminPage() {
     { label: "Named datasets", value: new Set(datasets.map((dataset) => dataset.dataset_name)).size, icon: Database, tone: "text-sky-300 border-sky-500/25 bg-sky-500/10" },
   ];
 
-  return <div className="relative flex h-screen overflow-hidden bg-zinc-950">
-    <MouseTracker />
-    <div className="relative z-10 flex w-full">
-      <Sidebar />
-      <main className="flex flex-1 flex-col overflow-hidden">
-        <Topbar />
-        <div className="flex-1 overflow-auto p-6 lg:p-8">
+  return <AppShell>
+    <div className="flex-1 overflow-auto p-6 lg:p-8">
           <div className="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
             <div>
               <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-violet-300"><Crown size={14} /> Privileged monitoring</div>
@@ -133,12 +126,20 @@ export default function SuperadminPage() {
               <div className="flex items-start justify-between gap-4"><div><h2 className="font-semibold text-white">Category distribution</h2><p className="mt-1 text-xs text-zinc-500">Every uploaded image, grouped by field category.</p></div><span className="rounded-lg border border-violet-500/25 bg-violet-500/10 px-2 py-1 text-xs font-medium text-violet-300">{datasets.length} total</span></div>
               <div className="mt-5 h-72">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={categories} margin={{ top: 8, right: 4, left: -18, bottom: 12 }}>
+                  <ComposedChart data={categories} margin={{ top: 15, right: 10, left: -18, bottom: 12 }}>
+                    <defs>
+                      <linearGradient id="superadminGoldGrad" x1="0" y1="0" x2="1" y2="0">
+                        <stop offset="0%" stopColor="#fba953"/>
+                        <stop offset="50%" stopColor="#f59e0b"/>
+                        <stop offset="100%" stopColor="#fbbf24"/>
+                      </linearGradient>
+                    </defs>
                     <XAxis dataKey="category" tickFormatter={formatCategoryLabel} tick={{ fill: "#a1a1aa", fontSize: 10 }} angle={-28} textAnchor="end" height={62} axisLine={false} tickLine={false} interval={0} />
                     <YAxis allowDecimals={false} tick={{ fill: "#71717a", fontSize: 11 }} axisLine={false} tickLine={false} />
-                    <Tooltip cursor={{ fill: "rgba(255,255,255,0.04)" }} contentStyle={{ background: "#18181b", border: "1px solid #3f3f46", borderRadius: "10px", color: "#f4f4f5" }} />
-                    <Bar dataKey="count" radius={[6, 6, 0, 0]}>{categories.map((entry) => <Cell key={entry.category} fill={CATEGORY_COLORS[entry.category]} />)}</Bar>
-                  </BarChart>
+                    <Tooltip cursor={{ fill: "rgba(255,255,255,0.03)" }} contentStyle={{ background: "rgba(15, 15, 18, 0.92)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: "12px", color: "#f4f4f5" }} />
+                    <Bar dataKey="count" radius={[8, 8, 0, 0]} barSize={32}>{categories.map((entry) => <Cell key={entry.category} fill={CATEGORY_COLORS[entry.category]} opacity={0.4} />)}</Bar>
+                    <Line type="monotone" dataKey="count" stroke="url(#superadminGoldGrad)" strokeWidth={3} dot={{ r: 5, fill: "#fba953", stroke: "#0f0f11", strokeWidth: 2 }} activeDot={{ r: 7, fill: "#fba953", stroke: "#ffffff", strokeWidth: 2 }} />
+                  </ComposedChart>
                 </ResponsiveContainer>
               </div>
             </div>
@@ -154,8 +155,6 @@ export default function SuperadminPage() {
               {loading ? <tr><td colSpan={5} className="px-5 py-12 text-center text-zinc-500">Loading platform activity…</td></tr> : dailyInternUploads.length === 0 ? <tr><td colSpan={5} className="px-5 py-12 text-center text-zinc-500">No timestamped intern uploads yet.</td></tr> : dailyInternUploads.map((record) => <tr key={`${record.day}-${record.intern}`} className="border-b border-zinc-800/70 last:border-0 hover:bg-zinc-800/30"><td className="px-5 py-3.5 text-zinc-300">{formatDay(record.day)}</td><td className="px-5 py-3.5 font-medium text-white">{record.intern}</td><td className="px-5 py-3.5 text-emerald-300">{record.uploadedImages}</td><td className="px-5 py-3.5 text-zinc-300">{record.datasets}</td><td className="px-5 py-3.5 text-zinc-400">{formatTime(record.latestUpload)}</td></tr>)}
             </tbody></table></div>
           </section>
-        </div>
-      </main>
     </div>
-  </div>;
+  </AppShell>;
 }

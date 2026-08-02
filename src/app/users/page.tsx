@@ -3,9 +3,7 @@
 import { useState } from "react";
 import { UserPlus, Trash2, RefreshCw, X, Eye, EyeOff, ShieldCheck, FlaskConical, GraduationCap, Briefcase, Crown } from "lucide-react";
 
-import MouseTracker from "@/components/ui/mouse-tracker";
-import Sidebar from "@/components/layout/sidebar";
-import Topbar from "@/components/layout/topbar";
+import AppShell from "@/components/layout/app-shell";
 import { usePolling } from "@/hooks/usePolling";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -46,6 +44,11 @@ export default function UsersPage() {
   const [loading, setLoading]   = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
+
+  // current logged-in user role (read once from localStorage)
+  const [currentUserRole] = useState<string>(() =>
+    typeof window === "undefined" ? "" : localStorage.getItem("role") || ""
+  );
 
   // create form state
   const [newUsername, setNewUsername] = useState("");
@@ -104,26 +107,26 @@ export default function UsersPage() {
     if (res.ok) setUsers((prev) => prev.map((u) => u.username === username ? { ...u, role } : u));
   }
 
-  async function handleDelete(username: string) {
+  async function handleDelete(username: string, targetRole: Role) {
+    // Guard: only superadmin can delete a superadmin account
+    if (targetRole === "superadmin" && currentUserRole !== "superadmin") {
+      alert("Permission denied: Only a Superadmin can delete another Superadmin account.");
+      return;
+    }
     if (!confirm(`Delete user "${username}"? This cannot be undone.`)) return;
     const res = await fetch(`${API_URL}/users/${username}`, { method: "DELETE" });
     if (res.ok) setUsers((prev) => prev.filter((u) => u.username !== username));
   }
 
   return (
-    <div className="relative flex h-screen overflow-hidden bg-zinc-950">
-      <MouseTracker />
-      <div className="relative z-10 flex w-full">
-        <Sidebar />
-        <main className="flex flex-1 flex-col overflow-hidden">
-          <Topbar />
-          <div className="flex-1 overflow-auto p-8">
+    <AppShell>
+      <div className="flex-1 overflow-auto p-8">
 
             {/* Header */}
             <div className="mb-8 flex items-center justify-between">
               <div>
                 <h1 className="text-3xl font-bold text-white">Users</h1>
-                <p className="text-zinc-400">Manage platform accounts and roles</p>
+                <p className="text-zinc-200">Manage platform accounts and roles</p>
               </div>
               <div className="flex items-center gap-2">
                 <button
@@ -156,7 +159,7 @@ export default function UsersPage() {
                       <Icon size={16} />
                     </div>
                     <div>
-                      <p className="text-xs text-zinc-500">{m.label}s</p>
+                      <p className="text-xs text-zinc-300">{m.label}s</p>
                       <p className="text-xl font-bold text-white">{loading ? "—" : count}</p>
                     </div>
                   </div>
@@ -170,7 +173,7 @@ export default function UsersPage() {
                 <thead>
                   <tr className="border-b border-zinc-700 bg-zinc-800">
                     {["User", "Role", "Change Role", "Actions"].map((h) => (
-                      <th key={h} className={`px-5 py-3 text-xs font-semibold uppercase tracking-wider text-zinc-400 ${h === "Actions" ? "text-right" : "text-left"}`}>
+                      <th key={h} className={`px-5 py-3 text-xs font-semibold uppercase tracking-wider text-zinc-200 ${h === "Actions" ? "text-right" : "text-left"}`}>
                         {h}
                       </th>
                     ))}
@@ -178,9 +181,9 @@ export default function UsersPage() {
                 </thead>
                 <tbody>
                   {loading ? (
-                    <tr><td colSpan={4} className="py-16 text-center text-sm text-zinc-500">Loading…</td></tr>
+                    <tr><td colSpan={4} className="py-16 text-center text-sm text-zinc-300">Loading…</td></tr>
                   ) : users.length === 0 ? (
-                    <tr><td colSpan={4} className="py-16 text-center text-sm text-zinc-500">No users found.</td></tr>
+                    <tr><td colSpan={4} className="py-16 text-center text-sm text-zinc-300">No users found.</td></tr>
                   ) : users.map((u) => (
                     <tr key={u.username} className="border-b border-zinc-800 transition hover:bg-zinc-800/40">
                       {/* User */}
@@ -207,22 +210,26 @@ export default function UsersPage() {
 
                       {/* Delete */}
                       <td className="px-5 py-3 text-right">
-                        <button
-                          onClick={() => handleDelete(u.username)}
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-red-900/50 bg-red-950/20 px-3 py-1.5 text-xs font-medium text-red-400 hover:border-red-500 hover:bg-red-500/10 hover:text-red-300 transition-colors"
-                        >
-                          <Trash2 size={13} /> Delete
-                        </button>
+                        {/* Hide delete for superadmin rows when current user is not superadmin */}
+                        {(u.role !== "superadmin" || currentUserRole === "superadmin") ? (
+                          <button
+                            onClick={() => handleDelete(u.username, u.role)}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-red-900/50 bg-red-950/20 px-3 py-1.5 text-xs font-medium text-red-400 hover:border-red-500 hover:bg-red-500/10 hover:text-red-300 transition-colors"
+                          >
+                            <Trash2 size={13} /> Delete
+                          </button>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-800 px-3 py-1.5 text-xs font-medium text-zinc-300 cursor-not-allowed" title="Only Superadmin can delete this account">
+                            <Trash2 size={13} /> Protected
+                          </span>
+                        )}
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-          </div>
-        </main>
       </div>
-
       {/* Create User Modal */}
       {modalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
@@ -230,7 +237,7 @@ export default function UsersPage() {
 
             <div className="mb-5 flex items-center justify-between">
               <h2 className="text-lg font-semibold text-white">Create User</h2>
-              <button onClick={() => setModalOpen(false)} className="text-zinc-500 hover:text-white">
+              <button onClick={() => setModalOpen(false)} className="text-zinc-300 hover:text-white">
                 <X size={18} />
               </button>
             </div>
@@ -238,7 +245,7 @@ export default function UsersPage() {
             <div className="space-y-4">
               {/* Username */}
               <div>
-                <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-zinc-400">Username</label>
+                <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-zinc-200">Username</label>
                 <input
                   type="text"
                   placeholder="e.g. researcher2"
@@ -250,7 +257,7 @@ export default function UsersPage() {
 
               {/* Password */}
               <div>
-                <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-zinc-400">Password</label>
+                <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-zinc-200">Password</label>
                 <div className="relative">
                   <input
                     type={showPw ? "text" : "password"}
@@ -262,17 +269,17 @@ export default function UsersPage() {
                   <button
                     type="button"
                     onClick={() => setShowPw((v) => !v)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-300 hover:text-zinc-300"
                   >
                     {showPw ? <EyeOff size={15} /> : <Eye size={15} />}
                   </button>
                 </div>
-                <p className="mt-1 text-xs text-zinc-500">Share this password with the user — they can change it from Settings.</p>
+                <p className="mt-1 text-xs text-zinc-300">Share this password with the user — they can change it from Settings.</p>
               </div>
 
               {/* Role */}
               <div>
-                <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-zinc-400">Role</label>
+                <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-zinc-200">Role</label>
                 <div className="grid grid-cols-4 gap-2">
                   {ROLES.map((r) => {
                     const m = ROLE_META[r];
@@ -285,7 +292,7 @@ export default function UsersPage() {
                         className={`flex flex-col items-center gap-1.5 rounded-xl border px-3 py-3 text-xs font-medium transition-colors ${
                           newRole === r
                             ? `${m.color} border-current`
-                            : "border-zinc-700 bg-zinc-800 text-zinc-400 hover:border-zinc-600"
+                            : "border-zinc-700 bg-zinc-800 text-zinc-200 hover:border-zinc-600"
                         }`}
                       >
                         <Icon size={16} />
@@ -308,7 +315,7 @@ export default function UsersPage() {
             </div>
           </div>
         </div>
-      )}
-    </div>
+        )}
+    </AppShell>
   );
 }

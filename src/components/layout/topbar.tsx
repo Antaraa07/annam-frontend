@@ -1,46 +1,42 @@
 "use client";
 
-import { useState } from "react";
-import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 
-const PAGE_TITLES: Record<string, string> = {
-  "/": "Dashboard",
-  "/datasets": "Datasets",
-  "/upload": "Raw Data Upload",
-  "/analytics": "Analytics",
-  "/users": "Users",
-  "/projects": "Projects",
-  "/settings": "Settings",
-  "/superadmin": "Command Center",
+const ROLE_STYLE: Record<string, string> = {
+  superadmin: "text-violet-300",
+  admin: "text-amber-300",
+  intern: "text-emerald-300",
+  researcher: "text-cyan-300",
 };
 
 export default function Topbar() {
-  const pathname = usePathname();
-  const [user] = useState(() => ({
-    username: typeof window === "undefined" ? "" : localStorage.getItem("username") || "",
-    role: typeof window === "undefined" ? "" : localStorage.getItem("role") || "",
-  }));
+  const [user, setUser] = useState({ username: "", role: "" });
 
-  const title = PAGE_TITLES[pathname] ?? "ANNAM";
+  useEffect(() => {
+    setUser({
+      username: localStorage.getItem("username") || "",
+      role: localStorage.getItem("role") || "",
+    });
+  }, []);
+
+  if (!user.username) return null;
+
+  const roleCls = ROLE_STYLE[user.role] ?? "text-zinc-400";
 
   return (
-    <header className="flex h-16 items-center justify-between border-b border-zinc-800 px-8">
-      <div>
-        <h2 className="text-lg font-semibold text-white">{title}</h2>
-        <p className="text-sm text-zinc-400">ANNAM Storage Platform</p>
-      </div>
-
-      {user.username && (
-        <div className="flex items-center gap-3">
-          <div className="text-right">
-            <p className="text-sm font-medium text-white">{user.username}</p>
-            <p className="text-xs text-zinc-500 capitalize">{user.role}</p>
-          </div>
-          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-500/10 border border-emerald-500/20 text-sm font-bold text-emerald-400 uppercase">
-            {user.username.slice(0, 2)}
-          </div>
+    <div className="flex w-full justify-end px-6 pt-4">
+      <div className="flex items-center gap-2.5 rounded-2xl border border-white/10 bg-black/40 px-3 py-2 shadow-xl backdrop-blur-xl">
+        <div className="text-right leading-tight">
+          <p className="text-sm font-bold text-white">{user.username}</p>
+          <p className={`text-xs font-medium capitalize ${roleCls}`}>
+            {user.role}
+          </p>
         </div>
-      )}
-    </header>
+
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-xs font-black uppercase text-white shadow-md">
+          {user.username.slice(0, 2)}
+        </div>
+      </div>
+    </div>
   );
 }

@@ -1,12 +1,9 @@
 "use client";
 
+import AppShell from "@/components/layout/app-shell";
 import { useState, useEffect, useRef } from "react";
 import { RefreshCw, UserPlus, UserMinus, ChevronDown, ChevronUp, Upload, FolderOpen, Plus, X, Download, Loader2 } from "lucide-react";
 import Link from "next/link";
-
-import Sidebar from "@/components/layout/sidebar";
-import Topbar from "@/components/layout/topbar";
-import MouseTracker from "@/components/ui/mouse-tracker";
 
 import { Project } from "@/types/project";
 import {
@@ -213,13 +210,8 @@ export default function ProjectsPage() {
   }
 
   return (
-    <div className="relative flex h-screen overflow-hidden bg-zinc-950">
-      <MouseTracker />
-      <div className="relative z-10 flex w-full">
-        <Sidebar />
-        <main className="flex flex-1 flex-col overflow-hidden">
-          <Topbar />
-          <div className="flex-1 overflow-auto p-8">
+    <AppShell>
+      <div className="flex-1 overflow-auto p-8">
 
             {/* Header */}
             <div className="mb-6 flex items-center justify-between gap-4">
@@ -552,9 +544,7 @@ export default function ProjectsPage() {
                 })}
               </div>
             )}
-          </div>
-        </main>
       </div>
-    </div>
+    </AppShell>
   );
 }

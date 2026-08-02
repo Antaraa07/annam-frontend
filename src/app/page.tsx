@@ -25,9 +25,7 @@ import {
   Pie 
 } from "recharts";
 
-import Sidebar from "@/components/layout/sidebar";
-import Topbar from "@/components/layout/topbar";
-import MouseTracker from "@/components/ui/mouse-tracker";
+import AppShell from "@/components/layout/app-shell";
 import RecentUploads from "@/components/dashboard/recent-uploads";
 import StorageUsage from "@/components/dashboard/storage-usage";
 import StatsCard from "@/components/dashboard/stats-card";
@@ -126,58 +124,74 @@ function CollectionMix({ datasets, loading }: { datasets: Dataset[]; loading: bo
   }
 
   return (
-    <section className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-5">
-      <div className="flex items-center justify-between mb-4 border-b border-zinc-800 pb-3">
+    <section className="rounded-2xl border border-zinc-800/80 bg-zinc-900/60 p-5 backdrop-blur-md shadow-xl hover:border-emerald-500/30 transition-all">
+      <div className="flex items-center justify-between mb-4 border-b border-zinc-800/60 pb-3">
         <div>
-          <h2 className="font-semibold text-white">Collection Mix</h2>
-          <p className="mt-0.5 text-xs text-zinc-500">Distribution across raw categories and annotated classes.</p>
+          <h2 className="font-semibold text-white tracking-tight">Collection Mix</h2>
+          <p className="mt-0.5 text-xs text-zinc-400">Distribution across raw categories and annotated classes.</p>
         </div>
       </div>
 
       <div className="flex flex-col gap-6">
         {/* Raw Mix Donut */}
         <div className="flex flex-col sm:flex-row items-center justify-between gap-6 border-b border-zinc-800/40 pb-5">
-          <div className="relative h-[120px] w-[120px] shrink-0">
+          <div className="relative h-[125px] w-[125px] shrink-0 flex items-center justify-center">
+            <div className="pointer-events-none absolute h-20 w-20 rounded-full bg-emerald-500/10 blur-xl" />
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
+                <defs>
+                  <filter id="donutGlow" x="-20%" y="-20%" width="140%" height="140%">
+                    <feGaussianBlur stdDeviation="2.5" result="blur" />
+                    <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                  </filter>
+                </defs>
                 <Pie
                   data={rawChartData}
                   innerRadius={38}
                   outerRadius={54}
                   paddingAngle={3}
                   dataKey="value"
+                  strokeWidth={0}
                 >
                   {rawChartData.map((entry) => (
-                    <Cell key={entry.name} fill={CATEGORY_COLORS[entry.name] || "#a1a1aa"} />
+                    <Cell key={entry.name} fill={CATEGORY_COLORS[entry.name] || "#a1a1aa"} filter="url(#donutGlow)" />
                   ))}
                 </Pie>
                 <Tooltip
-                  contentStyle={{ background: "#18181b", border: "1px solid #27272a", borderRadius: "10px", color: "#f4f4f5" }}
+                  contentStyle={{
+                    background: "rgba(15, 15, 18, 0.92)",
+                    border: "1px solid rgba(255, 255, 255, 0.12)",
+                    borderRadius: "12px",
+                    color: "#f4f4f5",
+                    fontSize: "12px",
+                    boxShadow: "0 10px 30px rgba(0,0,0,0.5)",
+                    backdropFilter: "blur(12px)",
+                  }}
                 />
               </PieChart>
             </ResponsiveContainer>
             <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-              <span className="text-lg font-extrabold text-white">{rawTotal}</span>
-              <span className="text-[7px] uppercase tracking-wider font-semibold text-zinc-500">Raw</span>
+              <span className="text-lg font-extrabold text-white font-mono">{rawTotal}</span>
+              <span className="text-[10px] uppercase tracking-widest font-bold text-emerald-400">Raw</span>
             </div>
           </div>
 
           <div className="flex-1 space-y-1.5 w-full">
             {rawChartData.length === 0 ? (
-              <p className="text-xs text-zinc-600 text-center py-6">No raw images uploaded yet.</p>
+              <p className="text-sm text-zinc-400 text-center py-6">No raw images uploaded yet.</p>
             ) : (
               rawChartData.slice(0, 3).map((item) => {
                 const percentage = rawTotal > 0 ? Math.round((item.value / rawTotal) * 100) : 0;
                 const color = CATEGORY_COLORS[item.name] || "#a1a1aa";
                 return (
-                  <div key={item.name} className="flex items-center justify-between text-xs bg-zinc-950/40 border border-zinc-800/40 rounded-lg px-2.5 py-1">
+                  <div key={item.name} className="flex items-center justify-between text-xs bg-zinc-950/50 border border-zinc-800/50 rounded-xl px-3 py-1.5">
                     <div className="flex items-center gap-2 min-w-0">
-                      <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: color }} />
+                      <span className="h-2.5 w-2.5 rounded-full shrink-0 shadow-[0_0_8px]" style={{ backgroundColor: color, boxShadow: `0 0 8px ${color}` }} />
                       <span className="text-zinc-300 font-medium truncate">{item.name}</span>
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
-                      <span className="text-zinc-500 font-mono">{item.value}</span>
-                      <span className="text-white font-semibold">{percentage}%</span>
+                      <span className="text-zinc-300 font-mono text-xs">{item.value}</span>
+                      <span className="text-white font-mono font-bold text-xs">{percentage}%</span>
                     </div>
                   </div>
                 );
@@ -188,7 +202,8 @@ function CollectionMix({ datasets, loading }: { datasets: Dataset[]; loading: bo
 
         {/* Annotated Mix Donut */}
         <div className="flex flex-col sm:flex-row items-center justify-between gap-6">
-          <div className="relative h-[120px] w-[120px] shrink-0">
+          <div className="relative h-[125px] w-[125px] shrink-0 flex items-center justify-center">
+            <div className="pointer-events-none absolute h-20 w-20 rounded-full bg-cyan-500/10 blur-xl" />
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
@@ -197,37 +212,47 @@ function CollectionMix({ datasets, loading }: { datasets: Dataset[]; loading: bo
                   outerRadius={54}
                   paddingAngle={3}
                   dataKey="value"
+                  strokeWidth={0}
                 >
                   {annotatedChartData.map((entry, index) => (
-                    <Cell key={entry.name} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                    <Cell key={entry.name} fill={CHART_COLORS[index % CHART_COLORS.length]} filter="url(#donutGlow)" />
                   ))}
                 </Pie>
                 <Tooltip
-                  contentStyle={{ background: "#18181b", border: "1px solid #27272a", borderRadius: "10px", color: "#f4f4f5" }}
+                  contentStyle={{
+                    background: "rgba(15, 15, 18, 0.92)",
+                    border: "1px solid rgba(255, 255, 255, 0.12)",
+                    borderRadius: "12px",
+                    color: "#f4f4f5",
+                    fontSize: "12px",
+                    boxShadow: "0 10px 30px rgba(0,0,0,0.5)",
+                    backdropFilter: "blur(12px)",
+                  }}
                 />
               </PieChart>
             </ResponsiveContainer>
             <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-              <span className="text-lg font-extrabold text-white">{annTotal}</span>
-              <span className="text-[7px] uppercase tracking-wider font-semibold text-zinc-500">Annotated</span>
+              <span className="text-lg font-extrabold text-white font-mono">{annTotal}</span>
+              <span className="text-[10px] uppercase tracking-widest font-bold text-cyan-400">Annotated</span>
             </div>
           </div>
 
           <div className="flex-1 space-y-1.5 w-full">
             {annotatedChartData.length === 0 ? (
-              <p className="text-xs text-zinc-600 text-center py-6">No annotated images uploaded yet.</p>
+              <p className="text-sm text-zinc-400 text-center py-6">No annotated images uploaded yet.</p>
             ) : (
               annotatedChartData.slice(0, 3).map((item, index) => {
                 const percentage = annTotal > 0 ? Math.round((item.value / annTotal) * 100) : 0;
+                const color = CHART_COLORS[index % CHART_COLORS.length];
                 return (
-                  <div key={item.name} className="flex items-center justify-between text-xs bg-zinc-950/40 border border-zinc-800/40 rounded-lg px-2.5 py-1">
+                  <div key={item.name} className="flex items-center justify-between text-xs bg-zinc-950/50 border border-zinc-800/50 rounded-xl px-3 py-1.5">
                     <div className="flex items-center gap-2 min-w-0">
-                      <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: CHART_COLORS[index % CHART_COLORS.length] }} />
+                      <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: color, boxShadow: `0 0 8px ${color}` }} />
                       <span className="text-zinc-300 font-medium truncate">{item.name}</span>
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
-                      <span className="text-zinc-500 font-mono">{item.value}</span>
-                      <span className="text-white font-semibold">{percentage}%</span>
+                      <span className="text-zinc-300 font-mono text-xs">{item.value}</span>
+                      <span className="text-white font-mono font-bold text-xs">{percentage}%</span>
                     </div>
                   </div>
                 );
@@ -247,7 +272,7 @@ function PersonalActivity({ data, loading }: { data: Dataset[]; loading: boolean
         <Activity size={18} className="text-emerald-400" />
         <div>
           <h2 className="font-semibold text-white">Recent activity</h2>
-          <p className="mt-1 text-xs text-zinc-500">Your latest collection work.</p>
+          <p className="mt-1 text-xs text-zinc-300">Your latest collection work.</p>
         </div>
       </div>
       {loading ? (
@@ -255,14 +280,14 @@ function PersonalActivity({ data, loading }: { data: Dataset[]; loading: boolean
           {[1, 2, 3].map((key) => <div key={key} className="h-12 animate-pulse rounded-xl bg-zinc-800" />)}
         </div>
       ) : data.length === 0 ? (
-        <p className="mt-6 text-sm text-zinc-500">No recent activity yet.</p>
+        <p className="mt-6 text-sm text-zinc-300">No recent activity yet.</p>
       ) : (
         <div className="mt-5 space-y-2">
           {data.slice(0, 5).map((item, index) => (
             <div key={`${item.dataset_name}-${index}`} className="flex items-center justify-between gap-3 rounded-xl border border-zinc-800 bg-zinc-950/60 px-3 py-2.5">
               <div className="min-w-0">
                 <p className="truncate text-sm font-medium text-white">{item.dataset_name}</p>
-                <p className="mt-0.5 text-xs text-zinc-500">{item["lab/dept"] || "Collection record"}</p>
+                <p className="mt-0.5 text-xs text-zinc-300">{item["lab/dept"] || "Collection record"}</p>
               </div>
               <span className="shrink-0 text-xs text-emerald-300">{item.version || "v1.0"}</span>
             </div>
@@ -503,22 +528,17 @@ export default function Home() {
 
   if (loading) {
     return (
-      <div className="relative flex h-screen overflow-hidden bg-zinc-950">
+      <AppShell>
         <div className="flex-1 flex items-center justify-center">
           <div className="h-10 w-10 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent" />
         </div>
-      </div>
+      </AppShell>
     );
   }
 
   return (
-    <div className="relative flex h-screen overflow-hidden bg-zinc-950">
-      <MouseTracker />
-      <div className="relative z-10 flex w-full">
-        <Sidebar />
-        <main className="flex flex-1 flex-col overflow-hidden">
-          <Topbar />
-          <div className="flex-1 overflow-auto p-6 lg:p-8">
+    <AppShell>
+      <div className="flex-1 overflow-auto p-6 lg:p-8">
             
             {/* Header */}
             <div className="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
@@ -531,7 +551,7 @@ export default function Home() {
                 <h1 className="text-3xl font-bold tracking-tight text-white">
                   {isSuperadmin ? "Platform command center" : isAdmin ? "Overview" : "My overview"}
                 </h1>
-                <p className="mt-1 text-sm text-zinc-400">
+                <p className="mt-1 text-sm text-zinc-200">
                   {isSuperadmin 
                     ? "A live integrated view of collection volume, category coverage, and admin delivery." 
                     : isAdmin 
@@ -551,33 +571,24 @@ export default function Home() {
             {/* SUPERADMIN DASHBOARD (Platform Command Center Integrated) */}
             {isSuperadmin && (
               <div className="space-y-6">
-                {/* Stats cards */}
+                {/* Stats cards — Superadmin */}
                 <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-                  <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-xl border text-emerald-300 border-emerald-500/25 bg-emerald-500/10"><Images size={18} /></div>
-                    <p className="mt-5 text-2xl font-bold text-white">{datasets.length.toLocaleString("en-IN")}</p>
-                    <p className="mt-1 text-[13px] font-medium text-zinc-400">Uploaded images</p>
-                  </div>
-                  <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-xl border text-violet-300 border-violet-500/25 bg-violet-500/10"><Users size={18} /></div>
-                    <p className="mt-5 text-2xl font-bold text-white">{users.length.toLocaleString("en-IN")}</p>
-                    <p className="mt-1 text-[13px] font-medium text-zinc-400">Platform users</p>
-                  </div>
-                  <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-xl border text-amber-300 border-amber-500/25 bg-amber-500/10"><ShieldCheck size={18} /></div>
-                    <p className="mt-5 text-2xl font-bold text-white">{users.filter((user) => user.role === "intern").length.toLocaleString("en-IN")}</p>
-                    <p className="mt-1 text-[13px] font-medium text-zinc-400">Intern contributors</p>
-                  </div>
-                  <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-xl border text-sky-300 border-sky-500/25 bg-sky-500/10"><Database size={18} /></div>
-                    <p className="mt-5 text-2xl font-bold text-white">{new Set(datasets.map((dataset) => dataset.dataset_name)).size.toLocaleString("en-IN")}</p>
-                    <p className="mt-1 text-[13px] font-medium text-zinc-400">Named datasets</p>
-                  </div>
-                  <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-xl border text-pink-300 border-pink-500/25 bg-pink-500/10"><HardDrive size={18} /></div>
-                    <p className="mt-5 text-2xl font-bold text-white">{summary?.storage || "—"}</p>
-                    <p className="mt-1 text-[13px] font-medium text-zinc-400">Storage size</p>
-                  </div>
+                  {[
+                    { icon: Images,      accent: "emerald", label: "Uploaded images",     value: datasets.length.toLocaleString("en-IN") },
+                    { icon: Users,       accent: "violet",  label: "Platform users",      value: users.length.toLocaleString("en-IN") },
+                    { icon: ShieldCheck, accent: "amber",   label: "Intern contributors", value: users.filter((u) => u.role === "intern").length.toLocaleString("en-IN") },
+                    { icon: Database,    accent: "sky",     label: "Named datasets",      value: new Set(datasets.map((d) => d.dataset_name)).size.toLocaleString("en-IN") },
+                    { icon: HardDrive,   accent: "rose",    label: "Storage size",        value: summary?.storage || "—" },
+                  ].map(({ icon: Icon, accent, label, value }) => (
+                    <div key={label} className={`relative overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5 shadow-lg transition-all duration-200 hover:border-${accent}-500/30 hover:shadow-${accent}-500/10 hover:shadow-xl`}>
+                      <div className={`flex h-10 w-10 items-center justify-center rounded-xl border border-${accent}-500/25 bg-${accent}-500/10 text-${accent}-300`}>
+                        <Icon size={18} />
+                      </div>
+                      <p className={`mt-5 text-2xl font-bold text-${accent}-300`}>{value}</p>
+                      <p className="mt-1 text-sm font-medium text-zinc-400">{label}</p>
+                      <div className={`absolute bottom-0 left-0 h-0.5 w-full bg-gradient-to-r from-${accent}-500/50 to-transparent`} />
+                    </div>
+                  ))}
                 </section>
 
                 {/* Charts */}
@@ -586,7 +597,7 @@ export default function Home() {
                     <div className="flex items-start justify-between gap-4">
                       <div>
                         <h2 className="font-semibold text-white">Category distribution</h2>
-                        <p className="mt-1 text-sm text-zinc-400">Every uploaded image, grouped by field category.</p>
+                        <p className="mt-1 text-sm text-zinc-200">Every uploaded image, grouped by field category.</p>
                       </div>
                       <span className="rounded-lg border border-violet-500/25 bg-violet-500/10 px-2 py-1 text-xs font-medium text-violet-300">{datasets.length} total</span>
                     </div>
@@ -606,7 +617,7 @@ export default function Home() {
                   <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5 xl:col-span-2 flex flex-col justify-between">
                     <div>
                       <h2 className="font-semibold text-white">Collection coverage</h2>
-                      <p className="mt-1 text-sm text-zinc-400">Category totals at a glance.</p>
+                      <p className="mt-1 text-sm text-zinc-200">Category totals at a glance.</p>
                       <div className="mt-5 space-y-3">
                         {categories.map((item) => (
                           <div key={item.category} className="flex items-center gap-3">
@@ -631,15 +642,15 @@ export default function Home() {
                   <div className="flex items-center justify-between gap-4 border-b border-zinc-800 px-5 py-4">
                     <div>
                       <h2 className="text-lg font-semibold text-white">Upload Activity Breakdown</h2>
-                      <p className="mt-1 text-sm text-zinc-400">Track and compare upload counts grouped by selected period.</p>
+                      <p className="mt-1 text-sm text-zinc-200">Track and compare upload counts grouped by selected period.</p>
                     </div>
                     <div className="flex items-center gap-3">
-                      <span className="text-[13px] text-zinc-400 font-medium">Period:</span>
+                      <span className="text-sm text-zinc-200 font-medium">Period:</span>
                       <Select
                         value={superadminPeriod}
                         onValueChange={(val) => setSuperadminPeriod(val as any)}
                       >
-                        <SelectTrigger className="w-[120px] h-9 border-zinc-800 bg-zinc-950 text-xs font-semibold text-zinc-300">
+                        <SelectTrigger className="w-[120px] h-9 border-zinc-800 bg-zinc-950 text-sm font-semibold text-zinc-300">
                           <SelectValue placeholder="Period" />
                         </SelectTrigger>
                         <SelectContent className="border-zinc-800 bg-zinc-950 text-zinc-300">
@@ -659,18 +670,18 @@ export default function Home() {
                         <h3 className="font-semibold text-white text-sm">Admin Uploads</h3>
                       </div>
                       <div className="overflow-x-auto max-h-[400px] overflow-y-auto [scrollbar-width:thin] [scrollbar-color:#3f3f46_transparent]">
-                        <table className="w-full text-sm">
+                        <table className="w-full text-base">
                           <thead className="border-b border-zinc-800 bg-zinc-950">
                             <tr>
                               {["Period", "Admin Username", "Uploaded Images", "Latest Upload"].map((heading) => (
-                                <th key={heading} className="px-4 py-2.5 text-left text-[13px] font-semibold uppercase tracking-wider text-zinc-400">{heading}</th>
+                                <th key={heading} className="px-4 py-2.5 text-left text-sm font-semibold uppercase tracking-wider text-zinc-200">{heading}</th>
                               ))}
                             </tr>
                           </thead>
                           <tbody>
                             {superadminAdminUploads.length === 0 ? (
                               <tr>
-                                <td colSpan={4} className="px-4 py-8 text-center text-zinc-500 text-sm">No admin uploads recorded.</td>
+                                <td colSpan={4} className="px-4 py-8 text-center text-zinc-300 text-sm">No admin uploads recorded.</td>
                               </tr>
                             ) : (
                               superadminAdminUploads.map((record, index) => (
@@ -678,7 +689,7 @@ export default function Home() {
                                   <td className="px-4 py-3 text-zinc-300 font-medium whitespace-nowrap">{formatPeriod(record.periodKey, superadminPeriod)}</td>
                                   <td className="px-4 py-3 font-semibold text-white">{record.admin}</td>
                                   <td className="px-4 py-3 text-emerald-400 font-bold font-mono">{record.count}</td>
-                                  <td className="px-4 py-3 text-zinc-500 text-xs whitespace-nowrap">{formatTime(record.latestUpload)}</td>
+                                  <td className="px-4 py-3 text-zinc-300 text-sm whitespace-nowrap">{formatTime(record.latestUpload)}</td>
                                 </tr>
                               ))
                             )}
@@ -693,18 +704,18 @@ export default function Home() {
                         <h3 className="font-semibold text-white text-sm">Intern Uploads</h3>
                       </div>
                       <div className="overflow-x-auto max-h-[400px] overflow-y-auto [scrollbar-width:thin] [scrollbar-color:#3f3f46_transparent]">
-                        <table className="w-full text-sm">
+                        <table className="w-full text-base">
                           <thead className="border-b border-zinc-800 bg-zinc-950">
                             <tr>
                               {["Period", "Intern Username", "Uploaded Images", "Latest Upload"].map((heading) => (
-                                <th key={heading} className="px-4 py-2.5 text-left text-[13px] font-semibold uppercase tracking-wider text-zinc-400">{heading}</th>
+                                <th key={heading} className="px-4 py-2.5 text-left text-sm font-semibold uppercase tracking-wider text-zinc-200">{heading}</th>
                               ))}
                             </tr>
                           </thead>
                           <tbody>
                             {superadminInternUploads.length === 0 ? (
                               <tr>
-                                <td colSpan={4} className="px-4 py-8 text-center text-zinc-500 text-sm">No intern uploads recorded.</td>
+                                <td colSpan={4} className="px-4 py-8 text-center text-zinc-300 text-sm">No intern uploads recorded.</td>
                               </tr>
                             ) : (
                               superadminInternUploads.map((record, index) => (
@@ -712,7 +723,7 @@ export default function Home() {
                                   <td className="px-4 py-3 text-zinc-300 font-medium whitespace-nowrap">{formatPeriod(record.periodKey, superadminPeriod)}</td>
                                   <td className="px-4 py-3 font-semibold text-white">{record.intern}</td>
                                   <td className="px-4 py-3 text-violet-400 font-bold font-mono">{record.count}</td>
-                                  <td className="px-4 py-3 text-zinc-500 text-xs whitespace-nowrap">{formatTime(record.latestUpload)}</td>
+                                  <td className="px-4 py-3 text-zinc-300 text-sm whitespace-nowrap">{formatTime(record.latestUpload)}</td>
                                 </tr>
                               ))
                             )}
@@ -728,28 +739,23 @@ export default function Home() {
             {/* ADMIN DASHBOARD */}
             {isAdmin && (
               <div className="space-y-6">
-                {/* Stats cards */}
+                {/* Stats cards — Admin */}
                 <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                  <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-xl border text-emerald-300 border-emerald-500/25 bg-emerald-500/10"><Database size={18} /></div>
-                    <p className="mt-5 text-2xl font-bold text-white">{summary?.datasets || "—"}</p>
-                    <p className="mt-1 text-[13px] font-medium text-zinc-400">Datasets</p>
-                  </div>
-                  <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-xl border text-violet-300 border-violet-500/25 bg-violet-500/10"><Users size={18} /></div>
-                    <p className="mt-5 text-2xl font-bold text-white">{users.length.toLocaleString("en-IN")}</p>
-                    <p className="mt-1 text-[13px] font-medium text-zinc-400">Users</p>
-                  </div>
-                  <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-xl border text-sky-300 border-sky-500/25 bg-sky-500/10"><HardDrive size={18} /></div>
-                    <p className="mt-5 text-2xl font-bold text-white">{summary?.storage || "—"}</p>
-                    <p className="mt-1 text-[13px] font-medium text-zinc-400">Storage</p>
-                  </div>
-                  <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-xl border text-pink-300 border-pink-500/25 bg-pink-500/10"><Images size={18} /></div>
-                    <p className="mt-5 text-2xl font-bold text-white">{datasets.length.toLocaleString("en-IN")}</p>
-                    <p className="mt-1 text-[13px] font-medium text-zinc-400">Uploaded images</p>
-                  </div>
+                  {[
+                    { icon: Database,  accent: "emerald", label: "Datasets",       value: String(summary?.datasets || "—") },
+                    { icon: Users,     accent: "violet",  label: "Users",           value: users.length.toLocaleString("en-IN") },
+                    { icon: HardDrive, accent: "sky",     label: "Storage",         value: String(summary?.storage || "—") },
+                    { icon: Images,    accent: "rose",    label: "Uploaded images", value: datasets.length.toLocaleString("en-IN") },
+                  ].map(({ icon: Icon, accent, label, value }) => (
+                    <div key={label} className={`relative overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5 shadow-lg transition-all duration-200 hover:border-${accent}-500/30 hover:shadow-${accent}-500/10 hover:shadow-xl`}>
+                      <div className={`flex h-10 w-10 items-center justify-center rounded-xl border border-${accent}-500/25 bg-${accent}-500/10 text-${accent}-300`}>
+                        <Icon size={18} />
+                      </div>
+                      <p className={`mt-5 text-2xl font-bold text-${accent}-300`}>{value}</p>
+                      <p className="mt-1 text-sm font-medium text-zinc-400">{label}</p>
+                      <div className={`absolute bottom-0 left-0 h-0.5 w-full bg-gradient-to-r from-${accent}-500/50 to-transparent`} />
+                    </div>
+                  ))}
                 </section>
 
                 {/* Recent Uploads & Collection Mix & Crop Distribution */}
@@ -773,15 +779,15 @@ export default function Home() {
                   <div className="flex items-center justify-between gap-4 border-b border-zinc-800 px-5 py-4">
                     <div>
                       <h2 className="text-lg font-semibold text-white">Intern Upload Activity</h2>
-                      <p className="mt-1 text-sm text-zinc-400">Track uploads of interns assigned under your projects grouped by selected period.</p>
+                      <p className="mt-1 text-sm text-zinc-200">Track uploads of interns assigned under your projects grouped by selected period.</p>
                     </div>
                     <div className="flex items-center gap-3">
-                      <span className="text-[13px] text-zinc-400 font-medium">Period:</span>
+                      <span className="text-sm text-zinc-200 font-medium">Period:</span>
                       <Select
                         value={adminPeriod}
                         onValueChange={(val) => setAdminPeriod(val as any)}
                       >
-                        <SelectTrigger className="w-[120px] h-9 border-zinc-800 bg-zinc-950 text-xs font-semibold text-zinc-300">
+                        <SelectTrigger className="w-[120px] h-9 border-zinc-800 bg-zinc-950 text-sm font-semibold text-zinc-300">
                           <SelectValue placeholder="Period" />
                         </SelectTrigger>
                         <SelectContent className="border-zinc-800 bg-zinc-950 text-zinc-300">
@@ -794,18 +800,18 @@ export default function Home() {
                     </div>
                   </div>
                   <div className="overflow-x-auto">
-                    <table className="min-w-full text-sm">
+                    <table className="min-w-full text-base">
                       <thead className="border-b border-zinc-800 bg-zinc-900">
                         <tr>
                           {["Period", "Intern", "Uploaded Images", "Datasets", "Latest Upload"].map((heading) => (
-                            <th key={heading} className="px-5 py-3 text-left text-[13px] font-semibold uppercase tracking-wider text-zinc-400">{heading}</th>
+                            <th key={heading} className="px-5 py-3 text-left text-sm font-semibold uppercase tracking-wider text-zinc-200">{heading}</th>
                           ))}
                         </tr>
                       </thead>
                       <tbody>
                         {dailyInternUploads.length === 0 ? (
                           <tr>
-                            <td colSpan={5} className="px-5 py-12 text-center text-zinc-500">No uploads recorded from your interns yet.</td>
+                            <td colSpan={5} className="px-5 py-12 text-center text-zinc-300">No uploads recorded from your interns yet.</td>
                           </tr>
                         ) : (
                           dailyInternUploads.map((record, index) => (
@@ -814,7 +820,7 @@ export default function Home() {
                               <td className="px-5 py-3.5 font-semibold text-white">{record.intern}</td>
                               <td className="px-5 py-3.5 text-emerald-300 font-bold font-mono">{record.uploadedImages}</td>
                               <td className="px-5 py-3.5 text-zinc-300 font-mono">{record.datasets}</td>
-                              <td className="px-5 py-3.5 text-zinc-500 text-xs">{formatTime(record.latestUpload)}</td>
+                              <td className="px-5 py-3.5 text-zinc-300 text-sm">{formatTime(record.latestUpload)}</td>
                             </tr>
                           ))
                         )}
@@ -828,26 +834,23 @@ export default function Home() {
             {/* INTERN / STUDENT / RESEARCHER DASHBOARD */}
             {isInternOrOther && (
               <div className="space-y-6">
-                {/* Stats cards */}
+                {/* Stats cards — Intern/Researcher */}
                 <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                  <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
-                    <p className="text-[13px] font-medium text-zinc-400">My images</p>
-                    <p className="mt-2 text-3xl font-extrabold text-white">{datasets.length}</p>
-                  </div>
-                  <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
-                    <p className="text-[13px] font-medium text-zinc-400">My datasets</p>
-                    <p className="mt-2 text-3xl font-extrabold text-white">{uniqueDatasets}</p>
-                  </div>
-                  <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
-                    <p className="text-[13px] font-medium text-zinc-400">Complete records</p>
-                    <p className="mt-2 text-3xl font-extrabold text-white">{completeRecords}</p>
-                  </div>
-                  <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5">
-                    <p className="text-[13px] font-medium text-zinc-400">Collection health</p>
-                    <p className="mt-2 text-3xl font-extrabold text-white">
-                      {datasets.length ? Math.round((completeRecords / datasets.length) * 100) : 0}%
-                    </p>
-                  </div>
+                  {[
+                    { icon: Images,      accent: "emerald", label: "My images",        value: datasets.length.toLocaleString("en-IN") },
+                    { icon: Database,    accent: "cyan",    label: "My datasets",      value: uniqueDatasets.toLocaleString("en-IN") },
+                    { icon: CheckCircle2,accent: "violet",  label: "Complete records", value: completeRecords.toLocaleString("en-IN") },
+                    { icon: Activity,    accent: "amber",   label: "Collection health",value: `${datasets.length ? Math.round((completeRecords / datasets.length) * 100) : 0}%` },
+                  ].map(({ icon: Icon, accent, label, value }) => (
+                    <div key={label} className={`relative overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5 shadow-lg transition-all duration-200 hover:border-${accent}-500/30 hover:shadow-${accent}-500/10 hover:shadow-xl`}>
+                      <div className={`flex h-10 w-10 items-center justify-center rounded-xl border border-${accent}-500/25 bg-${accent}-500/10 text-${accent}-300`}>
+                        <Icon size={18} />
+                      </div>
+                      <p className={`mt-5 text-2xl font-bold text-${accent}-300`}>{value}</p>
+                      <p className="mt-1 text-sm font-medium text-zinc-400">{label}</p>
+                      <div className={`absolute bottom-0 left-0 h-0.5 w-full bg-gradient-to-r from-${accent}-500/50 to-transparent`} />
+                    </div>
+                  ))}
                 </section>
 
                 <div className="grid gap-6 xl:grid-cols-2">
@@ -862,12 +865,12 @@ export default function Home() {
                       <CheckCircle2 size={18} className="text-emerald-400" />
                       <div>
                         <h2 className="font-semibold text-white">Data health</h2>
-                        <p className="mt-1 text-sm text-zinc-400 font-medium">Records with an image, dataset name, category, and version.</p>
+                        <p className="mt-1 text-sm text-zinc-200 font-medium">Records with an image, dataset name, category, and version.</p>
                       </div>
                     </div>
                     <div className="mt-5 flex items-end gap-4">
                       <p className="text-3xl font-bold text-white">{completeRecords}/{datasets.length}</p>
-                      <p className="pb-1 text-sm text-zinc-500">complete records</p>
+                      <p className="pb-1 text-sm text-zinc-300">complete records</p>
                     </div>
                     <div className="mt-3 h-2 rounded-full bg-zinc-800">
                       <div 
@@ -880,9 +883,7 @@ export default function Home() {
               </div>
             )}
 
-          </div>
-        </main>
       </div>
-    </div>
+    </AppShell>
   );
 }

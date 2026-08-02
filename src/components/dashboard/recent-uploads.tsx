@@ -29,7 +29,7 @@ export default function RecentUploads({
           </h2>
         </div>
 
-        <div className="flex items-center gap-2 text-xs text-zinc-400">
+        <div className="flex items-center gap-2 text-sm text-zinc-200">
           <ArrowUpRight className="h-4 w-4 text-emerald-400" />
           <span>last {data.length || "—"}</span>
         </div>
@@ -45,7 +45,7 @@ export default function RecentUploads({
           ))}
         </div>
       ) : data.length === 0 ? (
-        <p className="text-zinc-500">No uploads yet.</p>
+        <p className="text-zinc-300">No uploads yet.</p>
       ) : (
         <div className="space-y-4">
           {data.map((item, idx) => (
@@ -60,14 +60,14 @@ export default function RecentUploads({
                 <p className="truncate font-medium text-white">
                   {item.dataset_name}
                 </p>
-                <p className="text-sm text-zinc-500">
+                <p className="text-sm text-zinc-300">
                   {item.owner} •{' '}
-                  <span className="text-zinc-400">
+                  <span className="text-zinc-200">
                     {item.department ?? "—"}
                   </span>
                 </p>
               </div>
-              <span className="rounded-full bg-emerald-500/10 px-3 py-1 text-xs text-emerald-400">
+              <span className="rounded-full bg-emerald-500/10 px-3 py-1 text-sm text-emerald-400">
                 {item.version}
               </span>
             </div>

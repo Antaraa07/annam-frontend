@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import MouseTracker from "@/components/ui/mouse-tracker";
@@ -56,15 +57,21 @@ export default function LoginPage() {
       <div className="relative z-10 w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-900/50 p-8 shadow-xl backdrop-blur-md">
         <div className="mb-8 flex flex-col items-center">
           <div className="flex items-center gap-2">
-            <div className="h-2.5 w-2.5 rounded-full bg-emerald-400 shadow-[0_0_10px_3px_rgba(52,211,153,0.6)] animate-pulse" />
+            <Image
+              src="/logo.png"
+              alt="ANNAM Logo"
+              width={40}
+              height={40}
+              className="object-contain shrink-0"
+            />
             <h1 className="text-2xl font-bold tracking-tight text-white">ANNAM</h1>
           </div>
-          <p className="mt-1 text-sm text-zinc-500">Storage Platform Console</p>
+          <p className="mt-1.5 text-base text-zinc-300">Storage Platform Console</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-5">
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Username</label>
+            <label className="text-sm font-semibold text-zinc-200 uppercase tracking-wider">Username</label>
             <input
               type="text"
               value={username}
@@ -76,7 +83,7 @@ export default function LoginPage() {
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Password</label>
+            <label className="text-sm font-semibold text-zinc-200 uppercase tracking-wider">Password</label>
             <input
               type="password"
               value={password}

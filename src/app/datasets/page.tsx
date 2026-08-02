@@ -2,9 +2,7 @@
 
 import { useMemo, useState } from "react";
 
-import Sidebar from "@/components/layout/sidebar";
-import Topbar from "@/components/layout/topbar";
-import MouseTracker from "@/components/ui/mouse-tracker";
+import AppShell from "@/components/layout/app-shell";
 
 import DatasetTable from "@/components/datasets/dataset-table";
 import DatasetDialog from "@/components/datasets/dataset-dialog";
@@ -94,16 +92,8 @@ export default function DatasetsPage() {
   }
 
   return (
-    <div className="relative flex h-screen overflow-hidden bg-zinc-950">
-      <MouseTracker />
-
-      <div className="relative z-10 flex w-full">
-        <Sidebar />
-
-        <main className="flex flex-1 flex-col overflow-hidden">
-          <Topbar />
-
-          <div className="flex-1 overflow-auto p-8">
+    <AppShell>
+      <div className="flex-1 overflow-auto p-8">
             <div className="mb-8 flex items-center justify-between">
               <div>
                 <h1 className="text-3xl font-bold text-white">Datasets</h1>
@@ -165,9 +155,7 @@ export default function DatasetsPage() {
               count={filteredDatasets.length}
               datasetNames={datasetNames}
             />
-          </div>
-        </main>
       </div>
-    </div>
+    </AppShell>
   );
 }

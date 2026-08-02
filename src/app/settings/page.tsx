@@ -3,10 +3,8 @@
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { KeyRound, User } from "lucide-react";
+import AppShell from "@/components/layout/app-shell";
 
-import Sidebar from "@/components/layout/sidebar";
-import Topbar from "@/components/layout/topbar";
-import MouseTracker from "@/components/ui/mouse-tracker";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -68,13 +66,8 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="relative flex h-screen overflow-hidden bg-zinc-950">
-      <MouseTracker />
-      <div className="relative z-10 flex w-full">
-        <Sidebar />
-        <main className="flex flex-1 flex-col overflow-hidden">
-          <Topbar />
-          <div className="flex-1 overflow-auto p-8">
+    <AppShell>
+      <div className="flex-1 overflow-auto p-8">
             <h1 className="text-2xl font-bold text-white">Settings</h1>
             <p className="mt-1 text-sm text-zinc-500">Manage your account</p>
 
@@ -152,8 +145,6 @@ export default function SettingsPage() {
 
             </div>
           </div>
-        </main>
-      </div>
-    </div>
+        </AppShell>
   );
 }

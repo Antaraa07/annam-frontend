@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
+import { Plus, Trash2 } from "lucide-react";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
@@ -18,7 +19,7 @@ type Field = {
 export type UploadMetadata = Record<string, string>;
 
 const cropStageOptions = ["Seedling", "Vegetative", "Flowering", "Harvest"];
-const withCustom = (options: string[]) => [...options, "Custom"];
+const withCustom = (options: string[]) => [...new Set(options), "Custom"];
 const diseaseTypeOptions = withCustom(["Fungal", "Bacterial", "Viral", "Nematode", "Physiological"]);
 const severityOptions = ["Mild", "Moderate", "Severe", "Unknown"];
 const activeTimeOptions = withCustom(["Day", "Night", "Both"]);
@@ -37,6 +38,329 @@ const cropTypeOptions = withCustom([
   "Trees",
   "Flowers",
   "Ornamental"
+]);
+
+const cropNameOptions = withCustom([
+  "Bajra",
+  "Barley",
+  "Barnyard Millet",
+  "Browntop Millet",
+  "Castor",
+  "Cotton",
+  "Cowpea",
+  "Field Beans",
+  "Finger Millet",
+  "Foxtail Millet",
+  "Groundnut",
+  "Horse Gram",
+  "Kidney Beans",
+  "Kodu Millet",
+  "Lathyrus",
+  "Lentil",
+  "Linseed (Alsi)",
+  "Little Millet",
+  "Maize",
+  "Moong",
+  "Moth Beans",
+  "Niger Seed",
+  "Oats",
+  "Pigeon Pea",
+  "Proso Millet",
+  "Rice",
+  "Rice Bean",
+  "Sesame",
+  "Sorghum",
+  "Soyabean",
+  "Sugarcane",
+  "Sunflower",
+  "Urad",
+  "Amaranthus",
+  "Ash Gourd",
+  "Asparagus",
+  "Bathua",
+  "Beetroot",
+  "Bell Pepper",
+  "Bitter Gourd",
+  "Bottle Gourd",
+  "Broad Beans",
+  "Broccoli",
+  "Cabbage",
+  "Calabash",
+  "Carrot",
+  "Cassava",
+  "Cauliflower",
+  "Chilli",
+  "Collard Green",
+  "Colocasia",
+  "Cucumber",
+  "Drumstick",
+  "Elephant Foot Yam",
+  "Indian Round Gourd",
+  "Ivy Gourd",
+  "Lettuce",
+  "Lima Beans",
+  "Mogri",
+  "Pea",
+  "Pointed Gourd",
+  "Potato",
+  "Pumpkin",
+  "Radish",
+  "Ridge Gourd",
+  "Sponge Gourd",
+  "Summer Squash",
+  "Sweet Potato",
+  "Tomato",
+  "Turnip",
+  "Water Spinach (Kalmi)",
+  "Winter Squash",
+  "Zucchini",
+  "Yardlong Beans",
+  "French Beans",
+  "Brinjal",
+  "Ajwain (Carom / Bishop's Weed)",
+  "Allspice",
+  "Aniseed",
+  "Asafoetida",
+  "Bay Leaf",
+  "Black Pepper",
+  "Cambodge",
+  "Caper",
+  "Caraway Seed",
+  "Cardamom",
+  "Cassia",
+  "Celery",
+  "Cinnamon",
+  "Clove",
+  "Cumin (Jeera)",
+  "Curry Leaf",
+  "Dill Leaves",
+  "Fennel",
+  "Ginger",
+  "Greater Galanga",
+  "Horseradish",
+  "Hyssop",
+  "Juniper Berry",
+  "Lovage",
+  "Marjoram",
+  "Nigella",
+  "Nutmeg",
+  "Oregano",
+  "Parsley",
+  "Pepper Long",
+  "Poppy Seed",
+  "Rosemary",
+  "Saffron",
+  "Sage",
+  "Savory",
+  "Star Anise",
+  "Sweet Flag",
+  "Tamarind",
+  "Tarragon",
+  "Thyme",
+  "Tulsi",
+  "Turmeric",
+  "Vanilla",
+  "Timur",
+  "Lemongrass",
+  "Almond",
+  "Amra",
+  "Aonla",
+  "Apple",
+  "Apricot",
+  "Areca Nut",
+  "Avocado",
+  "Bael",
+  "Banana",
+  "Ber",
+  "Cape Gooseberry",
+  "Carambola",
+  "Cashew Nut",
+  "Cherimoya",
+  "Cherries",
+  "Chestnut",
+  "Chironji",
+  "Coconut",
+  "Custard Apple",
+  "Date Palm",
+  "Dragon Fruit",
+  "Fig",
+  "Grapefruit",
+  "Grapes",
+  "Guava",
+  "Hazelnut",
+  "Jackfruit",
+  "Kaphal",
+  "Karonda",
+  "Khirni",
+  "Kinnow",
+  "Kiwifruit",
+  "Kokum",
+  "Lasoda",
+  "Litchi",
+  "Loquat",
+  "Mahua",
+  "Mango",
+  "Mangosteen",
+  "Mosambi",
+  "Mulberry",
+  "Netted Custard Apple",
+  "Olive",
+  "Orange",
+  "Papaya",
+  "Passion Fruit",
+  "Peach",
+  "Pear",
+  "Persimmon",
+  "Phalsa",
+  "Pineapple",
+  "Pistachio",
+  "Plum",
+  "Pomegranate",
+  "Pomelo",
+  "Quince",
+  "Rambutan",
+  "Sapota",
+  "Soursop",
+  "Strawberry",
+  "Walnut",
+  "Water Apple",
+  "Woodapple",
+  "Muskmelon",
+  "Watermelon",
+  "Galgal",
+  "Indian Mulberry",
+  "Lemon",
+  "Jamun",
+  "Spotted Fig",
+  "Bamboo",
+  "Coffee",
+  "Eucalyptus",
+  "Jute",
+  "Mesta",
+  "Poplar",
+  "Rubber",
+  "Safflower",
+  "Sandalwood",
+  "Sunn Hemp",
+  "Tea",
+  "Tobacco",
+  "B-CUCUMB",
+  "G-CUCUMB",
+  "Acacia",
+  "Agarwood",
+  "Alder",
+  "Amla",
+  "Amaltas",
+  "Arjuna",
+  "Areca Nut Palm",
+  "Ashoka",
+  "Babool",
+  "Banyan",
+  "Bibhitaki",
+  "Blue Pine",
+  "Breadfruit",
+  "Camphor Tree",
+  "Cannonball Tree",
+  "Casuarina",
+  "Chinar",
+  "Chir Pine",
+  "Cinnamon Tree",
+  "Clove Tree",
+  "Cocoa Tree",
+  "Coffee Tree",
+  "Copper Pod",
+  "Curry Leaf Tree",
+  "Deodar",
+  "Ebony",
+  "Fan Palm",
+  "Fishtail Palm",
+  "Gamhar",
+  "Gular",
+  "Haritaki",
+  "Himalayan Cypress",
+  "Himalayan Oak",
+  "Hollong",
+  "Horse Chestnut",
+  "Indian Beech",
+  "Indian Coral Tree",
+  "Indian Cork Tree",
+  "Indian Elm",
+  "Indian Laurel",
+  "Ironwood",
+  "Jammi (Shami)",
+  "Juniper",
+  "Kadamba",
+  "Karanj",
+  "Khair",
+  "Khejri",
+  "Kusum",
+  "Mahogany",
+  "Moringa (Drumstick Tree)",
+  "Nahor",
+  "Neem",
+  "Nutmeg Tree",
+  "Pakar",
+  "Palash",
+  "Palmyra Palm",
+  "Peepal",
+  "Poplar",
+  "Putranjiva",
+  "Rain Tree",
+  "Rhododendron (Burans)",
+  "Rohida",
+  "Rosewood",
+  "Rubber Tree",
+  "Rudraksha",
+  "Sal",
+  "Saptaparni",
+  "Semal (Silk Cotton Tree)",
+  "Silver Oak",
+  "Siris",
+  "Teak",
+  "Tendu",
+  "Toon",
+  "White Bark Acacia",
+  "White Teak",
+  "Wild Cherry",
+  "Wild Date Palm",
+  "Willow",
+  "Wood Apple",
+  "Testing Deepak",
+  "Giant Calotrope",
+  "Flame Tree",
+  "Chinaberry",
+  "Reetha",
+  "Red Silk Cotton",
+  "Arjuna",
+  "Yellow Oleander",
+  "Tree of Heaven",
+  "Kair (Caper Berry / Desert Caper)",
+  "Frangipani",
+  "Bauhinia",
+  "Maulsari",
+  "Kapoor",
+  "Red Powder Puff",
+  "Heena",
+  "Hibiscus",
+  "Lebbeck",
+  "Bauhinia",
+  "Morpankhi",
+  "Eastern Red Cedar",
+  "Weeping Fig",
+  "River tamarind",
+  "Sadabahar",
+  "Mogra",
+  "Parijat",
+  "Aparajita",
+  "Firebush",
+  "Golden Duranta",
+  "Golden Shower Tree",
+  "Mast Tree",
+  "Yellow Bells",
+  "Crape myrtle",
+  "Kassod",
+  "Bottle Brush",
+  "Others"
 ]);
 
 const pestNameOptions = withCustom([
@@ -124,7 +448,7 @@ const diseaseNameOptions = withCustom([
 export const METADATA_SCHEMAS: Record<string, Field[]> = {
   Healthy: [
     { key: "crop_type", label: "Crop Type", required: true, type: "select", options: cropTypeOptions },
-    { key: "crop_name", label: "Crop Name", required: true, placeholder: "e.g., Tomato" },
+    { key: "crop_name", label: "Crop Name", required: true, type: "select", options: cropNameOptions },
     { key: "planting_date", label: "Planting Date", type: "date" },
     { key: "plant_part", label: "Plant Part", placeholder: "e.g., Leaf" },
     { key: "crop_stage", label: "Crop Stage", placeholder: "e.g., Flowering" },
@@ -135,7 +459,7 @@ export const METADATA_SCHEMAS: Record<string, Field[]> = {
   ],
   Disease: [
     { key: "crop_type", label: "Crop Type", required: true, type: "select", options: cropTypeOptions },
-    { key: "crop_name", label: "Crop Name", required: true, placeholder: "e.g., Tomato" },
+    { key: "crop_name", label: "Crop Name", required: true, type: "select", options: cropNameOptions },
     { key: "planting_date", label: "Planting Date", type: "date" },
     { key: "disease_name", label: "Disease Name", required: true, type: "select", options: diseaseNameOptions },
     { key: "plant_part_affected", label: "Plant Part Affected", type: "select", options: plantPartOptions },
@@ -149,7 +473,7 @@ export const METADATA_SCHEMAS: Record<string, Field[]> = {
   ],
   Pest: [
     { key: "crop_type", label: "Crop Type", required: true, type: "select", options: cropTypeOptions },
-    { key: "crop_name", label: "Crop Name", required: true, placeholder: "e.g., Tomato" },
+    { key: "crop_name", label: "Crop Name", required: true, type: "select", options: cropNameOptions },
     { key: "pest_name", label: "Pest Name", required: true, type: "select", options: pestNameOptions },
     { key: "crop_stage", label: "Crop Stage", placeholder: "e.g., Fruiting" },
     { key: "scientific_name", label: "Scientific Name", placeholder: "e.g., Aphis gossypii" },
@@ -162,7 +486,7 @@ export const METADATA_SCHEMAS: Record<string, Field[]> = {
   ],
   "Disease Damage": [
     { key: "crop_type", label: "Crop Type", required: true, type: "select", options: cropTypeOptions },
-    { key: "crop_name", label: "Crop Name", required: true, placeholder: "e.g., Potato" },
+    { key: "crop_name", label: "Crop Name", required: true, type: "select", options: cropNameOptions },
     { key: "planting_date", label: "Planting Date", type: "date" },
     { key: "suspected_disease", label: "Suspected Disease", required: true, type: "select", options: diseaseNameOptions },
     { key: "plant_part_affected", label: "Plant Part Affected", type: "select", options: plantPartOptions },
@@ -175,7 +499,7 @@ export const METADATA_SCHEMAS: Record<string, Field[]> = {
   ],
   "Pest Damage": [
     { key: "crop_type", label: "Crop Type", required: true, type: "select", options: cropTypeOptions },
-    { key: "crop_name", label: "Crop Name", required: true, placeholder: "e.g., Tomato" },
+    { key: "crop_name", label: "Crop Name", required: true, type: "select", options: cropNameOptions },
     { key: "planting_date", label: "Planting Date", type: "date" },
     { key: "suspected_pest", label: "Suspected Pest", required: true, type: "select", options: pestNameOptions },
     { key: "damaged_plant_part", label: "Damaged Plant Part", placeholder: "e.g., Leaf" },
@@ -188,7 +512,7 @@ export const METADATA_SCHEMAS: Record<string, Field[]> = {
   ],
   Damage: [
     { key: "crop_type", label: "Crop Type", required: true, type: "select", options: cropTypeOptions },
-    { key: "crop_name", label: "Crop Name", required: true, placeholder: "e.g., Maize" },
+    { key: "crop_name", label: "Crop Name", required: true, type: "select", options: cropNameOptions },
     { key: "planting_date", label: "Planting Date", type: "date" },
     { key: "damage_type", label: "Damage Type", type: "select", options: damageTypeOptions },
     { key: "plant_part_affected", label: "Plant Part Affected", type: "select", options: plantPartOptions },
@@ -211,6 +535,16 @@ type Props = {
 
 export function UploadMetadataDialog({ category, initialMetadata, open, onOpenChange, onSave }: Props) {
   const [draft, setDraft] = useState<UploadMetadata>(initialMetadata ?? {});
+  const [customLabels, setCustomLabels] = useState<{ key: string; value: string }[]>(
+    // Re-hydrate custom labels from initialMetadata (keys that are not in schema)
+    () => {
+      if (!initialMetadata) return [];
+      const schemaKeys = new Set((METADATA_SCHEMAS[category] ?? []).map((f) => f.key));
+      return Object.entries(initialMetadata)
+        .filter(([k]) => !schemaKeys.has(k))
+        .map(([k, v]) => ({ key: k, value: v }));
+    }
+  );
   const fields = METADATA_SCHEMAS[category] ?? [];
   const inputClass = "w-full rounded-lg border border-zinc-700/50 bg-zinc-800/60 px-3 py-2 text-sm text-white placeholder-zinc-500 outline-none transition-all focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/20";
 
@@ -232,6 +566,14 @@ export function UploadMetadataDialog({ category, initialMetadata, open, onOpenCh
         metadata[field.key] = metadata[customKey].trim();
       }
       delete metadata[customKey];
+    }
+
+    // Merge user-created custom labels (skip blank keys or duplicate keys)
+    for (const { key, value } of customLabels) {
+      const trimKey = key.trim().toLowerCase().replace(/\s+/g, "_");
+      if (trimKey && value.trim()) {
+        metadata[trimKey] = value.trim();
+      }
     }
 
     onSave(metadata);
@@ -293,6 +635,63 @@ export function UploadMetadataDialog({ category, initialMetadata, open, onOpenCh
               )}
             </div>
           ))}
+
+          {/* ── Custom / User-Created Labels ── */}
+          <div className="sm:col-span-2">
+            <div className="mt-2 rounded-xl border border-dashed border-zinc-700 bg-zinc-800/30 p-4">
+              <div className="mb-3 flex items-center justify-between">
+                <div>
+                  <p className="text-[13px] font-semibold text-zinc-200">Custom Labels</p>
+                  <p className="text-[11px] text-zinc-500 mt-0.5">Add any extra field you need — these get saved with the image metadata.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setCustomLabels((prev) => [...prev, { key: "", value: "" }])}
+                  className="flex items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-xs font-semibold text-emerald-300 hover:bg-emerald-500/20 transition-all"
+                >
+                  <Plus size={12} /> Add Label
+                </button>
+              </div>
+
+              {customLabels.length === 0 ? (
+                <p className="text-center text-xs text-zinc-600 py-2">No custom labels yet. Click "Add Label" to create one.</p>
+              ) : (
+                <div className="space-y-2">
+                  {customLabels.map((cl, i) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <input
+                        value={cl.key}
+                        placeholder="Label name (e.g. soil_type)"
+                        onChange={(e) => {
+                          const updated = [...customLabels];
+                          updated[i] = { ...updated[i], key: e.target.value };
+                          setCustomLabels(updated);
+                        }}
+                        className={`${inputClass} flex-1`}
+                      />
+                      <input
+                        value={cl.value}
+                        placeholder="Value"
+                        onChange={(e) => {
+                          const updated = [...customLabels];
+                          updated[i] = { ...updated[i], value: e.target.value };
+                          setCustomLabels(updated);
+                        }}
+                        className={`${inputClass} flex-1`}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setCustomLabels((prev) => prev.filter((_, idx) => idx !== i))}
+                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-rose-500/20 bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 transition-all"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
         <DialogFooter className="mx-0 mb-0 border-zinc-800 bg-zinc-900 px-5 py-3 sm:justify-end">
           <button type="button" onClick={() => onOpenChange(false)} className="rounded-lg border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition hover:bg-zinc-800">Cancel</button>
