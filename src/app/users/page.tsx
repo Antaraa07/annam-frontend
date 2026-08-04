@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { UserPlus, Trash2, RefreshCw, X, Eye, EyeOff, ShieldCheck, FlaskConical, GraduationCap, Briefcase, Crown } from "lucide-react";
+import { UserPlus, Trash2, RefreshCw, X, Eye, EyeOff, ShieldCheck, FlaskConical, GraduationCap, Briefcase, Crown, Ban } from "lucide-react";
 
 import AppShell from "@/components/layout/app-shell";
 import { usePolling } from "@/hooks/usePolling";
@@ -45,9 +45,12 @@ export default function UsersPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
 
-  // current logged-in user role (read once from localStorage)
+  // current logged-in user role & username (read once from localStorage)
   const [currentUserRole] = useState<string>(() =>
     typeof window === "undefined" ? "" : localStorage.getItem("role") || ""
+  );
+  const [currentUsername] = useState<string>(() =>
+    typeof window === "undefined" ? "" : localStorage.getItem("username") || ""
   );
 
   // create form state
@@ -79,11 +82,19 @@ export default function UsersPage() {
     setFormError("");
     if (!newUsername.trim()) { setFormError("Username is required."); return; }
     if (newPassword.length < 6) { setFormError("Password must be at least 6 characters."); return; }
+    if (currentUserRole === "admin" && (newRole === "admin" || newRole === "superadmin")) {
+      setFormError("Admins can only create Researcher, Student, or Intern accounts.");
+      return;
+    }
     setCreating(true);
     try {
       const res = await fetch(`${API_URL}/users`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "X-User-Role": currentUserRole,
+          "X-User-Name": currentUsername,
+        },
         body: JSON.stringify({ username: newUsername.trim(), password: newPassword, role: newRole }),
       });
       const data = await res.json();
@@ -98,25 +109,62 @@ export default function UsersPage() {
     }
   }
 
-  async function handleRoleChange(username: string, role: Role) {
-    const res = await fetch(`${API_URL}/users/${username}`, {
+  async function handleRoleChange(targetUsername: string, role: Role) {
+    if (currentUserRole === "admin") {
+      const targetUser = users.find((u) => u.username === targetUsername);
+      if (targetUser?.role === "admin" || targetUser?.role === "superadmin" || targetUsername === currentUsername) {
+        alert("Permission denied: Admins cannot change their own role or other Admin/Superadmin roles.");
+        return;
+      }
+      if (role === "admin" || role === "superadmin") {
+        alert("Permission denied: Admins cannot promote users to Admin or Superadmin.");
+        return;
+      }
+    }
+    const res = await fetch(`${API_URL}/users/${targetUsername}`, {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "X-User-Role": currentUserRole,
+        "X-User-Name": currentUsername,
+      },
       body: JSON.stringify({ role }),
     });
-    if (res.ok) setUsers((prev) => prev.map((u) => u.username === username ? { ...u, role } : u));
+    if (res.ok) setUsers((prev) => prev.map((u) => u.username === targetUsername ? { ...u, role } : u));
+    else {
+      const errData = await res.json().catch(() => ({ detail: "Role update failed" }));
+      alert(errData.detail || "Failed to update role");
+    }
   }
 
-  async function handleDelete(username: string, targetRole: Role) {
-    // Guard: only superadmin can delete a superadmin account
-    if (targetRole === "superadmin" && currentUserRole !== "superadmin") {
-      alert("Permission denied: Only a Superadmin can delete another Superadmin account.");
+  async function handleDelete(targetUsername: string, targetRole: Role) {
+    if (currentUserRole === "admin" && targetRole !== "intern") {
+      alert("Permission denied: Admins can only delete Intern accounts.");
       return;
     }
-    if (!confirm(`Delete user "${username}"? This cannot be undone.`)) return;
-    const res = await fetch(`${API_URL}/users/${username}`, { method: "DELETE" });
-    if (res.ok) setUsers((prev) => prev.filter((u) => u.username !== username));
+    if (currentUserRole !== "superadmin" && currentUserRole !== "admin") {
+      alert("Permission denied: Only Superadmin and Admin can delete accounts.");
+      return;
+    }
+    if (!confirm(`Delete user "${targetUsername}"? This cannot be undone.`)) return;
+    const res = await fetch(`${API_URL}/users/${targetUsername}`, {
+      method: "DELETE",
+      headers: {
+        "X-User-Role": currentUserRole,
+        "X-User-Name": currentUsername,
+      },
+    });
+    if (res.ok) setUsers((prev) => prev.filter((u) => u.username !== targetUsername));
+    else {
+      const errData = await res.json().catch(() => ({ detail: "Delete failed" }));
+      alert(errData.detail || "Failed to delete user");
+    }
   }
+
+  // Determine allowed roles for modal creation based on user role
+  const availableCreateRoles = currentUserRole === "admin"
+    ? ROLES.filter((r) => r !== "superadmin" && r !== "admin")
+    : ROLES;
 
   return (
     <AppShell>
@@ -137,24 +185,26 @@ export default function UsersPage() {
                   <RefreshCw size={14} className={refreshing ? "animate-spin" : ""} />
                   Refresh
                 </button>
-                <button
-                  onClick={() => { setFormError(""); setModalOpen(true); }}
-                  className="flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 transition-colors"
-                >
-                  <UserPlus size={15} />
-                  Create User
-                </button>
+                {(currentUserRole === "superadmin" || currentUserRole === "admin") && (
+                  <button
+                    onClick={() => { setFormError(""); setModalOpen(true); }}
+                    className="flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 transition-colors"
+                  >
+                    <UserPlus size={15} />
+                    Create User
+                  </button>
+                )}
               </div>
             </div>
 
             {/* Stats row */}
-            <div className="mb-6 grid grid-cols-4 gap-4">
+            <div className="mb-6 grid grid-cols-5 gap-4">
               {ROLES.map((r) => {
                 const m = ROLE_META[r];
                 const count = users.filter((u) => u.role === r).length;
                 const Icon = m.icon;
                 return (
-                  <div key={r} className="rounded-xl border border-zinc-800 bg-zinc-900 px-5 py-4 flex items-center gap-4">
+                  <div key={r} className="rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-4 flex items-center gap-3">
                     <div className={`flex h-9 w-9 items-center justify-center rounded-lg border ${m.color}`}>
                       <Icon size={16} />
                     </div>
@@ -172,7 +222,10 @@ export default function UsersPage() {
               <table className="min-w-full">
                 <thead>
                   <tr className="border-b border-zinc-700 bg-zinc-800">
-                    {["User", "Role", "Change Role", "Actions"].map((h) => (
+                    {(currentUserRole === "superadmin"
+                      ? ["User", "Role", "Change Role", "Actions"]
+                      : ["User", "Role", "Actions"]
+                    ).map((h) => (
                       <th key={h} className={`px-5 py-3 text-xs font-semibold uppercase tracking-wider text-zinc-200 ${h === "Actions" ? "text-right" : "text-left"}`}>
                         {h}
                       </th>
@@ -181,51 +234,81 @@ export default function UsersPage() {
                 </thead>
                 <tbody>
                   {loading ? (
-                    <tr><td colSpan={4} className="py-16 text-center text-sm text-zinc-300">Loading…</td></tr>
+                    <tr><td colSpan={currentUserRole === "superadmin" ? 4 : 3} className="py-16 text-center text-sm text-zinc-300">Loading…</td></tr>
                   ) : users.length === 0 ? (
-                    <tr><td colSpan={4} className="py-16 text-center text-sm text-zinc-300">No users found.</td></tr>
-                  ) : users.map((u) => (
-                    <tr key={u.username} className="border-b border-zinc-800 transition hover:bg-zinc-800/40">
-                      {/* User */}
-                      <td className="px-5 py-3">
-                        <div className="flex items-center gap-3">
-                          <Avatar username={u.username} />
-                          <span className="font-medium text-white">{u.username}</span>
-                        </div>
-                      </td>
+                    <tr><td colSpan={currentUserRole === "superadmin" ? 4 : 3} className="py-16 text-center text-sm text-zinc-300">No users found.</td></tr>
+                  ) : users.map((u) => {
+                    const isSelf = u.username === currentUsername;
+                    const isTargetAdmin = u.role === "admin" || u.role === "superadmin";
 
-                      {/* Role badge */}
-                      <td className="px-5 py-3"><RoleBadge role={u.role} /></td>
+                    // Determine if role can be modified
+                    const canModifyRole = currentUserRole === "superadmin";
 
-                      {/* Role change */}
-                      <td className="px-5 py-3">
-                        <select
-                          value={u.role}
-                          onChange={(e) => handleRoleChange(u.username, e.target.value as Role)}
-                          className="rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-white outline-none focus:border-emerald-500 transition-colors"
-                        >
-                          {ROLES.map((r) => <option key={r} value={r}>{ROLE_META[r].label}</option>)}
-                        </select>
-                      </td>
+                    // Determine if user can be deleted
+                    const canDelete = currentUserRole === "superadmin"
+                      ? (!isSelf)
+                      : currentUserRole === "admin"
+                        ? (u.role === "intern")
+                        : false;
 
-                      {/* Delete */}
-                      <td className="px-5 py-3 text-right">
-                        {/* Hide delete for superadmin rows when current user is not superadmin */}
-                        {(u.role !== "superadmin" || currentUserRole === "superadmin") ? (
-                          <button
-                            onClick={() => handleDelete(u.username, u.role)}
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-red-900/50 bg-red-950/20 px-3 py-1.5 text-xs font-medium text-red-400 hover:border-red-500 hover:bg-red-500/10 hover:text-red-300 transition-colors"
-                          >
-                            <Trash2 size={13} /> Delete
-                          </button>
-                        ) : (
-                          <span className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-800 px-3 py-1.5 text-xs font-medium text-zinc-300 cursor-not-allowed" title="Only Superadmin can delete this account">
-                            <Trash2 size={13} /> Protected
-                          </span>
+                    return (
+                      <tr key={u.username} className="border-b border-zinc-800 transition hover:bg-zinc-800/40">
+                        {/* User */}
+                        <td className="px-5 py-3">
+                          <div className="flex items-center gap-3">
+                            <Avatar username={u.username} />
+                            <span className="font-medium text-white">{u.username}</span>
+                            {isSelf && (
+                              <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-400 font-mono">You</span>
+                            )}
+                          </div>
+                        </td>
+
+                        {/* Role badge */}
+                        <td className="px-5 py-3"><RoleBadge role={u.role} /></td>
+
+                        {/* Role change - ONLY for superadmin */}
+                        {currentUserRole === "superadmin" && (
+                          <td className="px-5 py-3">
+                            <select
+                              value={u.role}
+                              onChange={(e) => handleRoleChange(u.username, e.target.value as Role)}
+                              className="rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-white outline-none focus:border-emerald-500 transition-colors"
+                            >
+                              {ROLES.map((r) => (
+                                <option key={r} value={r}>{ROLE_META[r].label}</option>
+                              ))}
+                            </select>
+                          </td>
                         )}
-                      </td>
-                    </tr>
-                  ))}
+
+                        {/* Delete */}
+                        <td className="px-5 py-3 text-right">
+                          {canDelete ? (
+                            <button
+                              onClick={() => handleDelete(u.username, u.role)}
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-red-900/50 bg-red-950/20 px-3 py-1.5 text-xs font-medium text-red-400 hover:border-red-500 hover:bg-red-500/10 hover:text-red-300 transition-colors"
+                            >
+                              <Trash2 size={13} /> Delete
+                            </button>
+                          ) : (
+                            <div className="flex justify-end">
+                              <div
+                                className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-red-500/40 bg-red-500/15 text-red-400 cursor-not-allowed shadow-sm transition-transform hover:scale-105"
+                                title={
+                                  currentUserRole === "admin"
+                                    ? "Action prohibited: Admins can only delete Intern accounts"
+                                    : "Action prohibited: Only Superadmin can delete accounts"
+                                }
+                              >
+                                <Ban size={15} />
+                              </div>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -280,8 +363,8 @@ export default function UsersPage() {
               {/* Role */}
               <div>
                 <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-zinc-200">Role</label>
-                <div className="grid grid-cols-4 gap-2">
-                  {ROLES.map((r) => {
+                <div className="grid grid-cols-3 gap-2">
+                  {availableCreateRoles.map((r) => {
                     const m = ROLE_META[r];
                     const Icon = m.icon;
                     return (

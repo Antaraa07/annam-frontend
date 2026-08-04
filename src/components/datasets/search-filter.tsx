@@ -2,7 +2,7 @@
 
 import { Input } from "@/components/ui/input";
 
-const CATEGORIES = ["Disease", "Pest", "Damage", "Disease Damage", "Healthy", "Other"];
+const CATEGORIES = ["Disease", "Pest", "Damage", "Deficiency", "Healthy", "Other"];
 
 interface Props {
   search: string;

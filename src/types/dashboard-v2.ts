@@ -4,6 +4,7 @@ export interface RecentUpload {
   version: string;
   created_at?: string | null;
   department?: string | null;
+  image_count?: number;
 }
 
 export interface ActiveUsersResponse {

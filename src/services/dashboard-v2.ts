@@ -11,9 +11,9 @@ function getUsername(): string {
   return typeof window !== "undefined" ? (localStorage.getItem("username") || "") : "";
 }
 
-export async function getRecentUploads(limit: number = 5) {
+export async function getRecentUploads(limit: number = 5, ignoreUsername: boolean = false) {
   try {
-    const username = getUsername();
+    const username = ignoreUsername ? "" : getUsername();
     const params = new URLSearchParams({ limit: String(limit) });
     if (username) params.set("username", username);
     const response = await fetch(`${API_URL}/analytics/recent-uploads?${params}`);

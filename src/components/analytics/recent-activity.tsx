@@ -6,6 +6,8 @@ type RecentActivityItem = {
   dataset_name: string;
   owner: string;
   version: string;
+  department?: string;
+  "lab/dept"?: string;
 };
 
 interface RecentActivityProps {
@@ -54,6 +56,7 @@ export default function RecentActivity({ data }: RecentActivityProps) {
 
           {data.map((item, index) => {
             const theme = getVersionTheme(item.version);
+            const subfolder = item.department || item["lab/dept"] || "General";
             return (
               <div
                 key={index}
@@ -64,17 +67,13 @@ export default function RecentActivity({ data }: RecentActivityProps) {
                   <Upload className={`h-2.5 w-2.5 ${theme.text}`} />
                 </div>
 
-                <div className="flex flex-1 items-start justify-between gap-3 min-w-0">
+                <div className="flex flex-1 items-center justify-between gap-3 min-w-0">
                   <div className="min-w-0">
                     <p className="text-sm font-semibold text-white truncate">{item.dataset_name}</p>
                     <p className="mt-0.5 text-xs text-zinc-400">
-                      Uploaded by{" "}
-                      <span className="font-medium text-zinc-300">{item.owner}</span>
+                      <span className="text-emerald-300 font-medium">{subfolder}</span> • Owner: {item.owner || "—"}
                     </p>
                   </div>
-                  <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold ${theme.bg} ${theme.text}`}>
-                    {item.version}
-                  </span>
                 </div>
               </div>
             );

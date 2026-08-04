@@ -5,13 +5,16 @@ import { Crown, Database, Images, RefreshCw, ShieldCheck, Users } from "lucide-r
 import { Bar, BarChart, ComposedChart, Line, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 import AppShell from "@/components/layout/app-shell";
+import RecentUploads from "@/components/dashboard/recent-uploads";
+import RecentActivity from "@/components/analytics/recent-activity";
 import type { Dataset } from "@/types/dataset";
+import type { RecentUpload } from "@/types/dashboard-v2";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-const CATEGORIES = ["Healthy", "Disease", "Pest", "Disease Damage", "Pest Damage", "Damage"] as const;
+const CATEGORIES = ["Healthy", "Disease", "Pest", "Deficiency", "Pest Damage", "Damage"] as const;
 const CATEGORY_COLORS: Record<(typeof CATEGORIES)[number], string> = {
   Healthy: "#34d399", Disease: "#f87171", Pest: "#f59e0b",
-  "Disease Damage": "#a78bfa", "Pest Damage": "#fb923c", Damage: "#38bdf8",
+  Deficiency: "#a78bfa", "Pest Damage": "#fb923c", Damage: "#38bdf8",
 };
 
 type User = { username: string; role: string };
@@ -34,12 +37,14 @@ function formatTime(value: string) {
 }
 
 function formatCategoryLabel(category: string) {
-  return ({ "Disease Damage": "Disease dmg.", "Pest Damage": "Pest dmg." } as Record<string, string>)[category] ?? category;
+  return ({ Deficiency: "Deficiency", "Pest Damage": "Pest dmg." } as Record<string, string>)[category] ?? category;
 }
 
 export default function SuperadminPage() {
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [users, setUsers] = useState<User[]>([]);
+  const [recentUploads, setRecentUploads] = useState<RecentUpload[]>([]);
+  const [activity, setActivity] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [notice, setNotice] = useState("");
@@ -47,10 +52,17 @@ export default function SuperadminPage() {
   const load = useCallback(async () => {
     setNotice("");
     try {
-      const [datasetsResponse, usersResponse] = await Promise.all([fetch(`${API_URL}/datasets`), fetch(`${API_URL}/users`)]);
+      const [datasetsResponse, usersResponse, recentUploadsResponse, activityResponse] = await Promise.all([
+        fetch(`${API_URL}/datasets`),
+        fetch(`${API_URL}/users`),
+        fetch(`${API_URL}/analytics/recent-uploads?limit=5`),
+        fetch(`${API_URL}/analytics/recent-uploads?limit=10`),
+      ]);
       if (!datasetsResponse.ok || !usersResponse.ok) throw new Error("Unable to load monitoring data");
       setDatasets(await datasetsResponse.json());
       setUsers(await usersResponse.json());
+      if (recentUploadsResponse.ok) setRecentUploads(await recentUploadsResponse.json());
+      if (activityResponse.ok) setActivity(await activityResponse.json());
     } catch {
       setNotice("Live platform data is temporarily unavailable. Refresh to try again.");
     } finally {
@@ -146,6 +158,16 @@ export default function SuperadminPage() {
             <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5 xl:col-span-2">
               <h2 className="font-semibold text-white">Collection coverage</h2><p className="mt-1 text-xs text-zinc-500">Category totals at a glance.</p>
               <div className="mt-5 space-y-3">{categories.map((item) => <div key={item.category} className="flex items-center gap-3"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: CATEGORY_COLORS[item.category] }} /><span className="min-w-0 flex-1 text-sm text-zinc-300">{item.category}</span><span className="text-sm font-semibold text-white">{loading ? "—" : item.count}</span></div>)}</div>
+            </div>
+          </section>
+
+          {/* Recent Upload Folders & Recent Activity Sections */}
+          <section className="mt-6 grid gap-6 xl:grid-cols-12">
+            <div className="xl:col-span-7">
+              <RecentUploads data={recentUploads} isLoading={loading} />
+            </div>
+            <div className="xl:col-span-5">
+              <RecentActivity data={activity} />
             </div>
           </section>
 

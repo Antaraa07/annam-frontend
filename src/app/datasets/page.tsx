@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 
 import AppShell from "@/components/layout/app-shell";
 
@@ -9,12 +10,18 @@ import DatasetDialog from "@/components/datasets/dataset-dialog";
 import SearchFilter from "@/components/datasets/search-filter";
 import DownloadModal from "@/components/datasets/download-modal";
 
-import { getDatasets, deleteDataset } from "@/services/datasets";
+import {
+  getDatasets, deleteDataset, getDeletionRequests,
+  createDeletionRequest, approveDeletionRequest, rejectDeletionRequest,
+  DeletionRequest, downloadRawImagesZip
+} from "@/services/datasets";
 import { Dataset } from "@/types/dataset";
 import { usePolling } from "@/hooks/usePolling";
-import { RefreshCw, Download } from "lucide-react";
+import { RefreshCw, Download, ChevronRight, Folder, FolderOpen, ArrowLeft, Bell } from "lucide-react";
 
 export default function DatasetsPage() {
+  const router = useRouter();
+
   const [datasets, setDatasets]           = useState<Dataset[]>([]);
   const [loading, setLoading]             = useState(true);
   const [selectedDataset, setSelectedDataset] = useState<Dataset | null>(null);
@@ -25,11 +32,42 @@ export default function DatasetsPage() {
 
   const [refreshing, setRefreshing] = useState(false);
   const [downloadOpen, setDownloadOpen] = useState(false);
+  const [filterPendingRequests, setFilterPendingRequests] = useState(false);
 
-  async function loadDatasets() {
+  // Folder navigation hierarchy state
+  const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
+  const [selectedSubfolder, setSelectedSubfolder] = useState<string | null>(null);
+
+  // User role & username from localStorage
+  const [currentUserRole, setCurrentUserRole] = useState<string>("");
+  const [currentUsername, setCurrentUsername] = useState<string>("");
+  const [deletionRequests, setDeletionRequests] = useState<DeletionRequest[]>([]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setCurrentUserRole(localStorage.getItem("role") || "");
+      setCurrentUsername(localStorage.getItem("username") || "");
+      
+      const params = new URLSearchParams(window.location.search);
+      const folderParam = params.get("folder");
+      const categoryParam = params.get("category");
+      if (folderParam) {
+        setSelectedFolder(folderParam);
+      }
+      if (categoryParam) {
+        setCategory(categoryParam);
+      }
+    }
+  }, []);
+
+  async function loadData() {
     try {
-      const data = await getDatasets();
+      const [data, reqs] = await Promise.all([
+        getDatasets(),
+        getDeletionRequests(),
+      ]);
       setDatasets(data);
+      setDeletionRequests(reqs);
     } catch (error) {
       console.error(error);
     } finally {
@@ -38,11 +76,11 @@ export default function DatasetsPage() {
     }
   }
 
-  usePolling(loadDatasets);
+  usePolling(loadData);
 
   async function handleRefresh() {
     setRefreshing(true);
-    await loadDatasets();
+    await loadData();
   }
 
   const owners = useMemo(
@@ -55,9 +93,14 @@ export default function DatasetsPage() {
     [datasets]
   );
 
+  const pendingRequests = useMemo(
+    () => deletionRequests.filter((r) => r.status === "pending"),
+    [deletionRequests]
+  );
+
   const filteredDatasets = useMemo(() =>
     datasets.filter((dataset) => {
-      // 1. Exclude any project/annotated data - raw only!
+      // Exclude any project/annotated data - raw only!
       if (dataset.project_id) return false;
 
       const datasetName = dataset.dataset_name ?? "";
@@ -71,18 +114,107 @@ export default function DatasetsPage() {
     [datasets, search, owner, category]
   );
 
+  const displayedDatasets = useMemo(() => {
+    if (!filterPendingRequests) return filteredDatasets;
+    const pendingTargetIds = new Set(pendingRequests.map((r) => r.target_id));
+    return filteredDatasets.filter(
+      (d) => pendingTargetIds.has(d.dataset_name) || pendingTargetIds.has(d.image_id)
+    );
+  }, [filteredDatasets, filterPendingRequests, pendingRequests]);
+
+  // Deletion logic: Superadmin deletes directly; Admin creates deletion request after confirmation
   async function handleDelete(dataset: Dataset) {
-    const confirmed = window.confirm(`Delete "${dataset.dataset_name}" ?`);
+    if (currentUserRole === "superadmin") {
+      const confirmed = window.confirm(`Double Check: Permanently delete image "${dataset.filename || dataset.image_id}"?`);
+      if (!confirmed) return;
+      try {
+        if (dataset.image_id) {
+          const username = localStorage.getItem("username") || "";
+          await deleteDataset(dataset.image_id, username);
+        }
+        setDatasets((prev) => prev.filter((d) => d.image_id !== dataset.image_id));
+      } catch (error) {
+        console.error(error);
+        alert("Delete failed");
+      }
+    } else {
+      const confirmed = window.confirm(`Double Check: Send deletion request for image "${dataset.filename || dataset.image_id}" to Superadmin for approval?`);
+      if (!confirmed) return;
+      try {
+        await createDeletionRequest("image", dataset.image_id, currentUsername);
+        await loadData();
+      } catch (error) {
+        console.error(error);
+        alert("Failed to send deletion request");
+      }
+    }
+  }
+
+  async function handleDeleteFolder(folderName: string) {
+    const targetImages = datasets.filter((d) => (d.dataset_name || "Unassigned") === folderName);
+    if (currentUserRole === "superadmin") {
+      const confirmed = window.confirm(`Double Check: Permanently delete dataset folder "${folderName}" and all ${targetImages.length} images inside?`);
+      if (!confirmed) return;
+      try {
+        const username = localStorage.getItem("username") || "";
+        for (const img of targetImages) {
+          if (img.image_id) {
+            await deleteDataset(img.image_id, username);
+          }
+        }
+        setDatasets((prev) => prev.filter((d) => (d.dataset_name || "Unassigned") !== folderName));
+        if (selectedFolder === folderName) {
+          setSelectedFolder(null);
+          setSelectedSubfolder(null);
+        }
+      } catch (error) {
+        console.error(error);
+        alert("Failed to delete dataset folder");
+      }
+    } else {
+      const confirmed = window.confirm(`Double Check: Send deletion request for dataset folder "${folderName}" to Superadmin for approval?`);
+      if (!confirmed) return;
+      try {
+        await createDeletionRequest("folder", folderName, currentUsername);
+        await loadData();
+      } catch (error) {
+        console.error(error);
+        alert("Failed to send deletion request");
+      }
+    }
+  }
+
+  async function handleRequestDelete(target_type: "folder" | "image", target_id: string) {
+    const confirmed = window.confirm(`Double Check: Send deletion request for ${target_type} "${target_id}" to Superadmin for approval?`);
     if (!confirmed) return;
     try {
-      if (dataset.image_id) {
-        const username = localStorage.getItem("username") || "";
-        await deleteDataset(dataset.image_id, username);
-      }
-      setDatasets((prev) => prev.filter((d) => d !== dataset));
+      await createDeletionRequest(target_type, target_id, currentUsername);
+      await loadData();
     } catch (error) {
       console.error(error);
-      alert("Delete failed");
+      alert("Failed to send deletion request");
+    }
+  }
+
+  async function handleApproveDelete(request_id: string) {
+    const confirmed = window.confirm("Approve and permanently delete this dataset/folder?");
+    if (!confirmed) return;
+    try {
+      await approveDeletionRequest(request_id, currentUserRole);
+      await loadData();
+    } catch (error) {
+      console.error(error);
+      alert("Approval failed");
+    }
+  }
+
+  async function handleRejectDelete(request_id: string) {
+    try {
+      await rejectDeletionRequest(request_id, currentUserRole);
+      await loadData();
+    } catch (error) {
+      console.error(error);
+      alert("Rejection failed");
     }
   }
 
@@ -94,21 +226,45 @@ export default function DatasetsPage() {
   return (
     <AppShell>
       <div className="flex-1 overflow-auto p-8">
-            <div className="mb-8 flex items-center justify-between">
+            {/* Header */}
+            <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
               <div>
                 <h1 className="text-3xl font-bold text-white">Datasets</h1>
-                <p className="text-zinc-400">Manage all stored raw datasets</p>
+                <p className="text-zinc-400">Manage all stored raw datasets in structured folders</p>
               </div>
+
               <div className="flex items-center gap-2">
+                {/* Superadmin Deletion Notification Bell */}
+                {currentUserRole === "superadmin" && (
+                  <button
+                    onClick={() => setFilterPendingRequests((prev) => !prev)}
+                    className={`relative flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition-all ${
+                      filterPendingRequests
+                        ? "border-amber-500 bg-amber-500/20 text-amber-300 shadow-md shadow-amber-500/10"
+                        : "border-zinc-700 bg-zinc-900 text-zinc-300 hover:border-amber-500/50 hover:text-amber-400"
+                    }`}
+                    title="Filter Datasets with Pending Deletion Requests"
+                  >
+                    <Bell size={16} className={pendingRequests.length > 0 ? "text-amber-400 animate-bounce" : "text-zinc-400"} />
+                    <span>Requests ({pendingRequests.length})</span>
+                    {pendingRequests.length > 0 && (
+                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-amber-500 text-[11px] font-bold text-black shadow">
+                        {pendingRequests.length}
+                      </span>
+                    )}
+                  </button>
+                )}
+
                 <a
                   onClick={() => setDownloadOpen(true)}
                   className={`flex cursor-pointer items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-300 hover:border-emerald-500 hover:text-emerald-400 transition-colors ${
-                    filteredDatasets.length === 0 ? "pointer-events-none opacity-40" : ""
+                    displayedDatasets.length === 0 ? "pointer-events-none opacity-40" : ""
                   }`}
                 >
                   <Download size={14} />
-                  Download ({filteredDatasets.length})
+                  Download ({displayedDatasets.length})
                 </a>
+
                 <button
                   onClick={handleRefresh}
                   disabled={refreshing}
@@ -117,6 +273,68 @@ export default function DatasetsPage() {
                   <RefreshCw size={14} className={refreshing ? "animate-spin" : ""} />
                   Refresh
                 </button>
+              </div>
+            </div>
+
+            {/* Breadcrumb Navigation Bar */}
+            <div className="mb-6 flex items-center justify-between rounded-xl border border-zinc-800 bg-zinc-900/60 px-4 py-3">
+              <div className="flex items-center gap-2 text-sm font-medium text-zinc-300">
+                <button
+                  onClick={() => { setSelectedFolder(null); setSelectedSubfolder(null); }}
+                  className={`flex items-center gap-1.5 transition-colors ${
+                    selectedFolder ? "text-emerald-400 hover:underline" : "text-white font-semibold"
+                  }`}
+                >
+                  <Folder size={16} /> Datasets Root
+                </button>
+
+                {selectedFolder && (
+                  <>
+                    <ChevronRight size={14} className="text-zinc-600" />
+                    <button
+                      onClick={() => setSelectedSubfolder(null)}
+                      className={`flex items-center gap-1.5 transition-colors ${
+                        selectedSubfolder ? "text-cyan-400 hover:underline" : "text-white font-semibold"
+                      }`}
+                    >
+                      <FolderOpen size={15} /> {selectedFolder}
+                    </button>
+                  </>
+                )}
+
+                {selectedSubfolder && (
+                  <>
+                    <ChevronRight size={14} className="text-zinc-600" />
+                    <span className="flex items-center gap-1.5 text-white font-semibold">
+                      {selectedSubfolder}
+                    </span>
+                  </>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2">
+                {/* Icon-only download button for raw images when inside a folder */}
+                {selectedFolder && (
+                  <button
+                    onClick={() => downloadRawImagesZip(selectedFolder, selectedSubfolder || undefined)}
+                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-emerald-500/40 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20 transition-colors"
+                    title="Download Raw Images ZIP"
+                  >
+                    <Download size={14} />
+                  </button>
+                )}
+
+                {selectedFolder && (
+                  <button
+                    onClick={() => {
+                      if (selectedSubfolder) setSelectedSubfolder(null);
+                      else setSelectedFolder(null);
+                    }}
+                    className="flex items-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs text-zinc-300 hover:border-zinc-600 hover:text-white transition-colors"
+                  >
+                    <ArrowLeft size={13} /> Back
+                  </button>
+                )}
               </div>
             </div>
 
@@ -136,9 +354,20 @@ export default function DatasetsPage() {
               </div>
             ) : (
               <DatasetTable
-                datasets={filteredDatasets}
+                datasets={displayedDatasets}
+                selectedFolder={selectedFolder}
+                selectedSubfolder={selectedSubfolder}
+                currentUserRole={currentUserRole}
+                currentUsername={currentUsername}
+                deletionRequests={deletionRequests}
+                onSelectFolder={(f) => { setSelectedFolder(f); setSelectedSubfolder(null); }}
+                onSelectSubfolder={(s) => setSelectedSubfolder(s)}
                 onView={handleView}
                 onDelete={handleDelete}
+                onDeleteFolder={handleDeleteFolder}
+                onRequestDelete={handleRequestDelete}
+                onApproveDelete={handleApproveDelete}
+                onRejectDelete={handleRejectDelete}
               />
             )}
 
@@ -152,8 +381,9 @@ export default function DatasetsPage() {
               open={downloadOpen}
               onOpenChange={setDownloadOpen}
               activeFilters={{ category, search, owner, label: "", source: "raw" }}
-              count={filteredDatasets.length}
+              count={displayedDatasets.length}
               datasetNames={datasetNames}
+              allDatasets={datasets}
             />
       </div>
     </AppShell>

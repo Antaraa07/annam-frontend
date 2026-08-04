@@ -24,12 +24,13 @@ interface Props {
 export default function CropDistribution({ datasets, isLoading = false, variant = "dashboard" }: Props) {
   const { typeData, nameData, totalCount } = useMemo(() => {
     const typeCounts: Record<string, number> = {};
-    const nameCounts: Record<string, { count: number; type: string }> = {};
+    const nameCounts: Record<string, { count: number; type: string; subfolders: Set<string> }> = {};
     let count = 0;
 
     datasets.forEach((d) => {
       let t = (d.crop_type || "").trim();
       let n = (d.crop_name || "").trim();
+      const subfolder = (d["lab/dept"] || d.department || "General").trim();
 
       // If crop_type is missing, empty, or NA, fall back to department/lab/dataset_name
       if (!t || t.toUpperCase() === "NA" || t.toLowerCase() === "not specified") {
@@ -47,9 +48,10 @@ export default function CropDistribution({ datasets, isLoading = false, variant 
       typeCounts[t] = (typeCounts[t] || 0) + 1;
       
       if (!nameCounts[n]) {
-        nameCounts[n] = { count: 0, type: t };
+        nameCounts[n] = { count: 0, type: t, subfolders: new Set<string>() };
       }
       nameCounts[n].count += 1;
+      if (subfolder) nameCounts[n].subfolders.add(subfolder);
     });
 
     const typeData = Object.entries(typeCounts)
@@ -57,7 +59,12 @@ export default function CropDistribution({ datasets, isLoading = false, variant 
       .sort((a, b) => b.value - a.value);
 
     const nameData = Object.entries(nameCounts)
-      .map(([name, info]) => ({ name, count: info.count, type: info.type }))
+      .map(([name, info]) => ({
+        name,
+        count: info.count,
+        type: info.type,
+        subfolders: Array.from(info.subfolders),
+      }))
       .sort((a, b) => b.count - a.count);
 
     return { typeData, nameData, totalCount: count };
@@ -162,12 +169,12 @@ export default function CropDistribution({ datasets, isLoading = false, variant 
         /* ==================== 2. ANALYTICS VIEW (Horizontal Chart + List Panel) ==================== */
         <div className="grid gap-6 md:grid-cols-2 items-center">
           {/* Horizontal Bar Chart Layout */}
-          <div className="flex flex-col items-center">
-            <div className="w-full h-48">
+          <div className="flex flex-col items-center justify-center">
+            <div className="w-full h-56">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={typeData} layout="vertical" margin={{ top: 5, right: 15, left: -5, bottom: 5 }}>
+                <BarChart data={typeData} layout="vertical" margin={{ top: 10, right: 35, left: 10, bottom: 5 }}>
                   <XAxis type="number" hide />
-                  <YAxis dataKey="name" type="category" stroke="#a1a1aa" fontSize={12} axisLine={false} tickLine={false} width={100} />
+                  <YAxis dataKey="name" type="category" stroke="#a1a1aa" fontSize={13} axisLine={false} tickLine={false} width={100} />
                   <Tooltip
                     cursor={{ fill: "rgba(255,255,255,0.03)" }}
                     contentStyle={{
@@ -180,7 +187,7 @@ export default function CropDistribution({ datasets, isLoading = false, variant 
                       backdropFilter: "blur(12px)",
                     }}
                   />
-                  <Bar dataKey="value" fill="#10b981" radius={[0, 8, 8, 0]} barSize={20}>
+                  <Bar dataKey="value" fill="#10b981" radius={[0, 8, 8, 0]} barSize={24}>
                     {typeData.map((entry, index) => (
                       <Cell key={entry.name} fill={CHART_COLORS[index % CHART_COLORS.length]} />
                     ))}
@@ -188,25 +195,9 @@ export default function CropDistribution({ datasets, isLoading = false, variant 
                 </BarChart>
               </ResponsiveContainer>
             </div>
-
-            {/* Detailed Legend table list */}
-            <div className="mt-4 w-full space-y-1.5 max-h-36 overflow-y-auto pr-1 [scrollbar-width:thin] [scrollbar-color:#3f3f46_transparent]">
-              {typeData.map((entry, index) => (
-                <div key={entry.name} className="flex items-center justify-between text-sm bg-zinc-950/40 border border-zinc-800/40 rounded-lg px-2.5 py-1">
-                  <div className="flex items-center gap-2 truncate">
-                    <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: CHART_COLORS[index % CHART_COLORS.length] }} />
-                    <span className="text-zinc-300 font-medium truncate">{entry.name}</span>
-                  </div>
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <span className="text-zinc-300 font-mono">{entry.value}</span>
-                    <span className="text-white font-semibold">{Math.round((entry.value / totalCount) * 100)}%</span>
-                  </div>
-                </div>
-              ))}
-            </div>
           </div>
 
-          {/* Right Panel: Varieties Breakdown */}
+          {/* Right Panel: Varieties Breakdown with Subfolders */}
           <div className="flex flex-col h-full justify-start border-l border-zinc-800/40 pl-0 md:pl-6">
             <h3 className="text-sm font-semibold uppercase tracking-wider text-zinc-300 mb-3 flex items-center gap-1.5">
               <BarChart2 size={13} className="text-emerald-400" />
@@ -217,10 +208,12 @@ export default function CropDistribution({ datasets, isLoading = false, variant 
             ) : (
               <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1 [scrollbar-width:thin] [scrollbar-color:#3f3f46_transparent]">
                 {nameData.map((item) => (
-                  <div key={item.name} className="flex items-center justify-between text-sm bg-zinc-950/40 border border-zinc-800/40 rounded-xl px-3.5 py-2">
-                    <div className="flex flex-col min-w-0">
+                  <div key={item.name} className="flex items-center justify-between text-sm bg-zinc-950/40 border border-zinc-800/40 rounded-xl px-3.5 py-2.5">
+                    <div className="flex flex-col min-w-0 pr-2">
                       <span className="text-white font-medium truncate">{item.name}</span>
-                      <span className="text-xs text-zinc-300 truncate">{item.type}</span>
+                      <span className="text-xs text-zinc-400 truncate">
+                        {item.type}{item.subfolders.length > 0 ? ` • Subfolders: ${item.subfolders.join(", ")}` : ""}
+                      </span>
                     </div>
                     <span className="text-emerald-400 font-mono font-bold shrink-0">{item.count} items</span>
                   </div>

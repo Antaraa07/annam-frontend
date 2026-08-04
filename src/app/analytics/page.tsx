@@ -43,7 +43,7 @@ const CATEGORY_COLORS: Record<string, string> = {
   Healthy: "#10b981",
   Disease: "#f43f5e",
   Pest: "#eab308",
-  "Disease Damage": "#a855f7",
+  Deficiency: "#a855f7",
   "Pest Damage": "#f97316",
   Damage: "#06b6d4",
   Unclassified: "#71717a",

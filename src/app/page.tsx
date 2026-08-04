@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState, useCallback } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { 
   Activity, 
   CheckCircle2, 
@@ -47,7 +49,7 @@ const CATEGORY_COLORS: Record<string, string> = {
   Healthy: "#34d399",
   Disease: "#f87171",
   Pest: "#f59e0b",
-  "Disease Damage": "#a78bfa",
+  Deficiency: "#a78bfa",
   "Pest Damage": "#fb923c",
   Damage: "#38bdf8",
   Unclassified: "#71717a",
@@ -67,7 +69,7 @@ function formatTime(value: string) {
 }
 
 function formatCategoryLabel(category: string) {
-  return ({ "Disease Damage": "Disease dmg.", "Pest Damage": "Pest dmg." } as Record<string, string>)[category] ?? category;
+  return ({ Deficiency: "Deficiency", "Pest Damage": "Pest dmg." } as Record<string, string>)[category] ?? category;
 }
 
 const CHART_COLORS = ["#3b82f6", "#8b5cf6", "#f59e0b", "#10b981", "#ec4899", "#f97316", "#0ea5e9"];
@@ -287,9 +289,11 @@ function PersonalActivity({ data, loading }: { data: Dataset[]; loading: boolean
             <div key={`${item.dataset_name}-${index}`} className="flex items-center justify-between gap-3 rounded-xl border border-zinc-800 bg-zinc-950/60 px-3 py-2.5">
               <div className="min-w-0">
                 <p className="truncate text-sm font-medium text-white">{item.dataset_name}</p>
-                <p className="mt-0.5 text-xs text-zinc-300">{item["lab/dept"] || "Collection record"}</p>
+                <p className="mt-0.5 text-xs text-zinc-400">
+                  <span className="text-emerald-300 font-medium">{item["lab/dept"] || (item as any).department || "General"}</span>
+                  {item.owner && <span> • Owner: {item.owner}</span>}
+                </p>
               </div>
-              <span className="shrink-0 text-xs text-emerald-300">{item.version || "v1.0"}</span>
             </div>
           ))}
         </div>
@@ -349,6 +353,7 @@ function formatPeriod(periodKey: string, period: string): string {
 }
 
 export default function Home() {
+  const router = useRouter();
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [recentUploads, setRecentUploads] = useState<RecentUpload[]>([]);
@@ -383,8 +388,8 @@ export default function Home() {
       const tasks = await Promise.all([
         getSummary(),
         getDatasets(),
-        getRecentActivity(),
-        getRecentUploads(5),
+        getRecentActivity(isAdmin),
+        getRecentUploads(5, isAdmin),
         getStorageUsage(),
         isAdmin ? fetch(`${API_URL}/users`).then((res) => (res.ok ? res.json() : [])) : Promise.resolve([]),
         isAdmin ? fetch(`${API_URL}/projects?username=${curUsername}`).then((res) => (res.ok ? res.json() : [])) : Promise.resolve([]),
@@ -517,7 +522,7 @@ export default function Home() {
 
   // Recharts Categories for Superadmin
   const categories = useMemo(() => {
-    const list = ["Healthy", "Disease", "Pest", "Disease Damage", "Pest Damage", "Damage"] as const;
+    const list = ["Healthy", "Disease", "Pest", "Deficiency", "Pest Damage", "Damage"] as const;
     return list.map((category) => ({
       category,
       count: datasets.filter((dataset) => dataset["lab/dept"] === category).length,
@@ -571,63 +576,98 @@ export default function Home() {
             {/* SUPERADMIN DASHBOARD (Platform Command Center Integrated) */}
             {isSuperadmin && (
               <div className="space-y-6">
-                {/* Stats cards — Superadmin */}
+                {/* Stats cards — Superadmin (Clickable links) */}
                 <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
                   {[
-                    { icon: Images,      accent: "emerald", label: "Uploaded images",     value: datasets.length.toLocaleString("en-IN") },
-                    { icon: Users,       accent: "violet",  label: "Platform users",      value: users.length.toLocaleString("en-IN") },
-                    { icon: ShieldCheck, accent: "amber",   label: "Intern contributors", value: users.filter((u) => u.role === "intern").length.toLocaleString("en-IN") },
-                    { icon: Database,    accent: "sky",     label: "Named datasets",      value: new Set(datasets.map((d) => d.dataset_name)).size.toLocaleString("en-IN") },
-                    { icon: HardDrive,   accent: "rose",    label: "Storage size",        value: summary?.storage || "—" },
-                  ].map(({ icon: Icon, accent, label, value }) => (
-                    <div key={label} className={`relative overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5 shadow-lg transition-all duration-200 hover:border-${accent}-500/30 hover:shadow-${accent}-500/10 hover:shadow-xl`}>
-                      <div className={`flex h-10 w-10 items-center justify-center rounded-xl border border-${accent}-500/25 bg-${accent}-500/10 text-${accent}-300`}>
+                    { icon: Images,      accent: "emerald", label: "Uploaded images",     value: datasets.length.toLocaleString("en-IN"), href: "/datasets" },
+                    { icon: Users,       accent: "violet",  label: "Platform users",      value: users.length.toLocaleString("en-IN"), href: "/users" },
+                    { icon: ShieldCheck, accent: "amber",   label: "Intern contributors", value: users.filter((u) => u.role === "intern").length.toLocaleString("en-IN"), href: "/users" },
+                    { icon: Database,    accent: "sky",     label: "Named datasets",      value: new Set(datasets.map((d) => d.dataset_name)).size.toLocaleString("en-IN"), href: "/datasets" },
+                    { icon: HardDrive,   accent: "rose",    label: "Storage size",        value: summary?.storage || "—", href: "/analytics" },
+                  ].map(({ icon: Icon, accent, label, value, href }) => (
+                    <Link
+                      key={label}
+                      href={href}
+                      className={`relative overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5 shadow-lg transition-all duration-200 hover:border-emerald-500/50 hover:bg-zinc-800/40 hover:scale-[1.02] block cursor-pointer group`}
+                    >
+                      <div className={`flex h-10 w-10 items-center justify-center rounded-xl border border-${accent}-500/25 bg-${accent}-500/10 text-${accent}-300 group-hover:scale-110 transition-transform`}>
                         <Icon size={18} />
                       </div>
                       <p className={`mt-5 text-2xl font-bold text-${accent}-300`}>{value}</p>
-                      <p className="mt-1 text-sm font-medium text-zinc-400">{label}</p>
+                      <p className="mt-1 text-sm font-medium text-zinc-400 group-hover:text-white transition-colors">{label}</p>
                       <div className={`absolute bottom-0 left-0 h-0.5 w-full bg-gradient-to-r from-${accent}-500/50 to-transparent`} />
-                    </div>
+                    </Link>
                   ))}
                 </section>
 
-                {/* Charts */}
+                {/* Clickable Charts */}
                 <section className="grid gap-6 xl:grid-cols-5">
                   <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5 xl:col-span-3">
                     <div className="flex items-start justify-between gap-4">
                       <div>
                         <h2 className="font-semibold text-white">Category distribution</h2>
-                        <p className="mt-1 text-sm text-zinc-200">Every uploaded image, grouped by field category.</p>
+                        <p className="mt-1 text-sm text-zinc-200">Click any category bar to filter Datasets directly.</p>
                       </div>
                       <span className="rounded-lg border border-violet-500/25 bg-violet-500/10 px-2 py-1 text-xs font-medium text-violet-300">{datasets.length} total</span>
                     </div>
                     <div className="mt-5 h-72">
                       <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={categories} margin={{ top: 8, right: 4, left: -18, bottom: 12 }}>
+                        <BarChart
+                          data={categories}
+                          margin={{ top: 8, right: 4, left: -18, bottom: 12 }}
+                          onClick={(data: any) => {
+                            if (data?.activePayload?.[0]?.payload?.category) {
+                              const cat = data.activePayload[0].payload.category;
+                              router.push(`/datasets?category=${encodeURIComponent(cat)}`);
+                            }
+                          }}
+                        >
                           <XAxis dataKey="category" tickFormatter={formatCategoryLabel} tick={{ fill: "#a1a1aa", fontSize: 10 }} angle={-28} textAnchor="end" height={62} axisLine={false} tickLine={false} interval={0} />
                           <YAxis allowDecimals={false} tick={{ fill: "#71717a", fontSize: 11 }} axisLine={false} tickLine={false} />
-                          <Tooltip cursor={{ fill: "rgba(255,255,255,0.04)" }} contentStyle={{ background: "#18181b", border: "1px solid #3f3f46", borderRadius: "10px", color: "#f4f4f5" }} />
-                          <Bar dataKey="count" radius={[6, 6, 0, 0]}>
-                            {categories.map((entry) => <Cell key={entry.category} fill={CATEGORY_COLORS[entry.category] || "#a1a1aa"} />)}
+                          <Tooltip cursor={{ fill: "rgba(255,255,255,0.06)" }} contentStyle={{ background: "#18181b", border: "1px solid #3f3f46", borderRadius: "10px", color: "#f4f4f5" }} />
+                          <Bar dataKey="count" radius={[6, 6, 0, 0]} className="cursor-pointer">
+                            {categories.map((entry) => (
+                              <Cell
+                                key={entry.category}
+                                fill={CATEGORY_COLORS[entry.category] || "#a1a1aa"}
+                                className="cursor-pointer hover:opacity-80 transition-opacity"
+                                onClick={() => router.push(`/datasets?category=${encodeURIComponent(entry.category)}`)}
+                              />
+                            ))}
                           </Bar>
                         </BarChart>
                       </ResponsiveContainer>
                     </div>
                   </div>
+
                   <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5 xl:col-span-2 flex flex-col justify-between">
                     <div>
                       <h2 className="font-semibold text-white">Collection coverage</h2>
-                      <p className="mt-1 text-sm text-zinc-200">Category totals at a glance.</p>
-                      <div className="mt-5 space-y-3">
+                      <p className="mt-1 text-sm text-zinc-200">Category totals (Click to open).</p>
+                      <div className="mt-5 space-y-2.5">
                         {categories.map((item) => (
-                          <div key={item.category} className="flex items-center gap-3">
-                            <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: CATEGORY_COLORS[item.category] || "#a1a1aa" }} />
-                            <span className="min-w-0 flex-1 text-sm text-zinc-300">{item.category}</span>
-                            <span className="text-sm font-semibold text-white">{item.count}</span>
-                          </div>
+                          <Link
+                            key={item.category}
+                            href={`/datasets?category=${encodeURIComponent(item.category)}`}
+                            className="flex items-center gap-3 p-2.5 rounded-xl bg-zinc-950/60 border border-zinc-800/50 hover:border-emerald-500/40 hover:bg-zinc-800/40 transition-all cursor-pointer group"
+                          >
+                            <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: CATEGORY_COLORS[item.category] || "#a1a1aa" }} />
+                            <span className="min-w-0 flex-1 text-sm text-zinc-300 font-medium group-hover:text-white transition-colors">{item.category}</span>
+                            <span className="text-sm font-semibold text-emerald-400 font-mono">{item.count}</span>
+                          </Link>
                         ))}
                       </div>
                     </div>
+                  </div>
+                </section>
+
+                {/* Recent Uploads Folders & Personal Recent Activity Widgets */}
+                <section className="grid gap-6 xl:grid-cols-12">
+                  <div className="xl:col-span-7">
+                    <RecentUploads data={recentUploads} isLoading={loading} />
+                  </div>
+                  <div className="xl:col-span-5">
+                    <PersonalActivity data={activity} loading={loading} />
                   </div>
                 </section>
 
@@ -739,38 +779,38 @@ export default function Home() {
             {/* ADMIN DASHBOARD */}
             {isAdmin && (
               <div className="space-y-6">
-                {/* Stats cards — Admin */}
+                {/* Stats cards — Admin (Clickable links) */}
                 <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                   {[
-                    { icon: Database,  accent: "emerald", label: "Datasets",       value: String(summary?.datasets || "—") },
-                    { icon: Users,     accent: "violet",  label: "Users",           value: users.length.toLocaleString("en-IN") },
-                    { icon: HardDrive, accent: "sky",     label: "Storage",         value: String(summary?.storage || "—") },
-                    { icon: Images,    accent: "rose",    label: "Uploaded images", value: datasets.length.toLocaleString("en-IN") },
-                  ].map(({ icon: Icon, accent, label, value }) => (
-                    <div key={label} className={`relative overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5 shadow-lg transition-all duration-200 hover:border-${accent}-500/30 hover:shadow-${accent}-500/10 hover:shadow-xl`}>
-                      <div className={`flex h-10 w-10 items-center justify-center rounded-xl border border-${accent}-500/25 bg-${accent}-500/10 text-${accent}-300`}>
+                    { icon: Images,    accent: "rose",    label: "Uploaded images", value: datasets.length.toLocaleString("en-IN"), href: "/datasets" },
+                    { icon: Database,  accent: "emerald", label: "Datasets",       value: uniqueDatasets.toLocaleString("en-IN"), href: "/datasets" },
+                    { icon: Users,     accent: "violet",  label: "Users",           value: users.length.toLocaleString("en-IN"), href: "/users" },
+                    { icon: HardDrive, accent: "sky",     label: "Pending",         value: String(summary?.storage || "Pending"), href: "/analytics" },
+                  ].map(({ icon: Icon, accent, label, value, href }) => (
+                    <Link
+                      key={label}
+                      href={href}
+                      className={`relative overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5 shadow-lg transition-all duration-200 hover:border-emerald-500/50 hover:bg-zinc-800/40 hover:scale-[1.02] block cursor-pointer group`}
+                    >
+                      <div className={`flex h-10 w-10 items-center justify-center rounded-xl border border-${accent}-500/25 bg-${accent}-500/10 text-${accent}-300 group-hover:scale-110 transition-transform`}>
                         <Icon size={18} />
                       </div>
                       <p className={`mt-5 text-2xl font-bold text-${accent}-300`}>{value}</p>
-                      <p className="mt-1 text-sm font-medium text-zinc-400">{label}</p>
+                      <p className="mt-1 text-sm font-medium text-zinc-400 group-hover:text-white transition-colors">{label}</p>
                       <div className={`absolute bottom-0 left-0 h-0.5 w-full bg-gradient-to-r from-${accent}-500/50 to-transparent`} />
-                    </div>
+                    </Link>
                   ))}
                 </section>
 
-                {/* Recent Uploads & Collection Mix & Crop Distribution */}
-                <section className="grid gap-6 xl:grid-cols-12">
-                  <div className="xl:col-span-6">
-                    <RecentUploads data={recentUploads} isLoading={loading} />
-                  </div>
-                  <div className="xl:col-span-6 flex flex-col gap-6">
-                    <CollectionMix datasets={datasets} loading={loading} />
-                    <CropDistribution datasets={datasets} isLoading={loading} />
-                  </div>
+                {/* Symmetrical Grid Row 2: Recent Uploads & Collection Mix */}
+                <section className="grid gap-6 xl:grid-cols-2">
+                  <RecentUploads data={recentUploads} isLoading={loading} />
+                  <CollectionMix datasets={datasets} loading={loading} />
                 </section>
 
-                {/* Storage usage */}
-                <section>
+                {/* Symmetrical Grid Row 3: Crop Distribution & Storage Usage */}
+                <section className="grid gap-6 xl:grid-cols-2">
+                  <CropDistribution datasets={datasets} isLoading={loading} />
                   <StorageUsage data={storageUsage} isLoading={loading} />
                 </section>
 

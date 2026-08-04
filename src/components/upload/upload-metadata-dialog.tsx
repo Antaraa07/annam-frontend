@@ -27,6 +27,24 @@ const damageTypeOptions = withCustom(["Holes", "Mining", "Chewing", "Boring", "S
 const plantPartOptions = withCustom(["Leaf", "Stem", "Root", "Fruit"]);
 const symptomTypeOptions = withCustom(["Lesion", "Spot", "Blight", "Wilt", "Rot", "Chlorosis", "Mosaic", "Rust", "Mildew"]);
 const suspectedCauseOptions = withCustom(["Hail", "Frost", "Heat Stress", "Waterlogging", "Herbicide Injury", "Animal Damage", "Machinery", "Unknown"]);
+const deficiencyOptions = withCustom([
+  "Nitrogen (N)",
+  "Phosphorus (P)",
+  "Potassium (K)",
+  "Calcium (Ca)",
+  "Magnesium (Mg)",
+  "Sulfur (S)",
+  "Iron (Fe)",
+  "Manganese (Mn)",
+  "Zinc (Zn)",
+  "Copper (Cu)",
+  "Boron (B)",
+  "Molybdenum (Mo)",
+  "Chlorine (Cl)",
+  "Nickel (Ni)",
+  "Water Stress",
+  "Sunlight",
+]);
 
 const cropTypeOptions = withCustom([
   "Agronomical Crops",
@@ -484,11 +502,11 @@ export const METADATA_SCHEMAS: Record<string, Field[]> = {
     { key: "date_collected", label: "Date Collected", type: "date" },
     { key: "observation", label: "Observation", type: "textarea", placeholder: "Any useful field observations" },
   ],
-  "Disease Damage": [
+  Deficiency: [
     { key: "crop_type", label: "Crop Type", required: true, type: "select", options: cropTypeOptions },
     { key: "crop_name", label: "Crop Name", required: true, type: "select", options: cropNameOptions },
     { key: "planting_date", label: "Planting Date", type: "date" },
-    { key: "suspected_disease", label: "Suspected Disease", required: true, type: "select", options: diseaseNameOptions },
+    { key: "suspected_deficiency", label: "Suspected Deficiency", required: true, type: "select", options: deficiencyOptions },
     { key: "plant_part_affected", label: "Plant Part Affected", type: "select", options: plantPartOptions },
     { key: "symptom_type", label: "Symptom Type", type: "select", options: symptomTypeOptions },
     { key: "crop_stage", label: "Crop Stage", placeholder: "e.g., Vegetative" },

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, DragEvent } from "react";
+import { useState, useRef, useEffect, DragEvent } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
@@ -11,7 +11,7 @@ import { motion } from "framer-motion";
 import { uploadDataset } from "@/services/upload";
 import { UploadMetadata, UploadMetadataDialog } from "./upload-metadata-dialog";
 
-const CATEGORIES = ["Healthy", "Disease", "Pest", "Disease Damage", "Pest Damage", "Damage"];
+const CATEGORIES = ["Healthy", "Disease", "Pest", "Deficiency", "Pest Damage", "Damage"];
 
 export default function UploadForm() {
   const [loading, setLoading] = useState(false);
@@ -31,6 +31,21 @@ export default function UploadForm() {
     version: "",
     description: "",
   }));
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const dsName = params.get("dataset_name");
+      const category = params.get("category");
+      if (dsName || category) {
+        setForm((prev) => ({
+          ...prev,
+          dataset_name: dsName || prev.dataset_name,
+          lab_dept: category || prev.lab_dept,
+        }));
+      }
+    }
+  }, []);
 
   function handleField(key: keyof typeof form, value: string) {
     setForm({ ...form, [key]: value });

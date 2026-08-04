@@ -1,9 +1,9 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 import { MOCK_DATA, mockApiCall } from './mock-api';
 
-export async function getRecentActivity() {
+export async function getRecentActivity(ignoreUsername: boolean = false) {
   try {
-    const username = typeof window !== "undefined" ? localStorage.getItem("username") : null;
+    const username = ignoreUsername ? null : (typeof window !== "undefined" ? localStorage.getItem("username") : null);
     const params = username ? `?username=${encodeURIComponent(username)}` : "";
     const response = await fetch(`${API_URL}/analytics/recent-uploads${params}`);
 
