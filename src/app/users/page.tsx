@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { UserPlus, Trash2, RefreshCw, X, Eye, EyeOff, ShieldCheck, FlaskConical, GraduationCap, Briefcase, Crown, Ban } from "lucide-react";
 
 import AppShell from "@/components/layout/app-shell";
@@ -8,10 +8,10 @@ import { usePolling } from "@/hooks/usePolling";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
-const ROLES = ["superadmin", "admin", "researcher", "student", "intern"] as const;
+const ROLES = ["admin", "intern", "researcher", "student", "superadmin"] as const;
 type Role = typeof ROLES[number];
 
-interface User { username: string; role: Role; }
+interface User { username: string; role: Role; disabled?: boolean; }
 
 const ROLE_META: Record<Role, { label: string; color: string; icon: React.ElementType }> = {
   superadmin: { label: "Superadmin", color: "bg-violet-500/15 text-violet-300 border-violet-500/30", icon: Crown },
@@ -40,52 +40,49 @@ function Avatar({ username }: { username: string }) {
 }
 
 export default function UsersPage() {
-  const [users, setUsers]       = useState<User[]>([]);
-  const [loading, setLoading]   = useState(true);
+  const [users, setUsers] = useState<User[]>([]);
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
-
-  // current logged-in user role & username (read once from localStorage)
-  const [currentUserRole] = useState<string>(() =>
-    typeof window === "undefined" ? "" : localStorage.getItem("role") || ""
-  );
-  const [currentUsername] = useState<string>(() =>
-    typeof window === "undefined" ? "" : localStorage.getItem("username") || ""
-  );
-
-  // create form state
   const [newUsername, setNewUsername] = useState("");
   const [newPassword, setNewPassword] = useState("");
-  const [newRole, setNewRole]         = useState<Role>("researcher");
-  const [showPw, setShowPw]           = useState(false);
-  const [creating, setCreating]       = useState(false);
-  const [formError, setFormError]     = useState("");
+  const [newRole, setNewRole] = useState<Role>("intern");
+  const [showPassword, setShowPassword] = useState(false);
+  const [formError, setFormError] = useState("");
+  const [creating, setCreating] = useState(false);
 
-  async function load() {
+  const [currentUserRole, setCurrentUserRole] = useState<string>("");
+  const [currentUsername, setCurrentUsername] = useState<string>("");
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setCurrentUserRole(localStorage.getItem("role") || "");
+      setCurrentUsername(localStorage.getItem("username") || "");
+    }
+  }, []);
+
+  async function loadUsers() {
     try {
       const res = await fetch(`${API_URL}/users`);
-      if (!res.ok) throw new Error();
-      setUsers(await res.json());
-    } catch {
-      // silently keep previous state
+      if (res.ok) setUsers(await res.json());
+    } catch (e) {
+      console.error(e);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   }
 
-  usePolling(load);
+  usePolling(loadUsers);
 
-  function handleRefresh() { setRefreshing(true); load(); }
+  async function handleRefresh() {
+    setRefreshing(true);
+    await loadUsers();
+  }
 
-  async function handleCreate() {
+  async function handleCreateUser(e: React.FormEvent | React.MouseEvent) {
+    e.preventDefault();
     setFormError("");
-    if (!newUsername.trim()) { setFormError("Username is required."); return; }
-    if (newPassword.length < 6) { setFormError("Password must be at least 6 characters."); return; }
-    if (currentUserRole === "admin" && (newRole === "admin" || newRole === "superadmin")) {
-      setFormError("Admins can only create Researcher, Student, or Intern accounts.");
-      return;
-    }
     setCreating(true);
     try {
       const res = await fetch(`${API_URL}/users`, {
@@ -93,34 +90,24 @@ export default function UsersPage() {
         headers: {
           "Content-Type": "application/json",
           "X-User-Role": currentUserRole,
-          "X-User-Name": currentUsername,
         },
-        body: JSON.stringify({ username: newUsername.trim(), password: newPassword, role: newRole }),
+        body: JSON.stringify({ username: newUsername, password: newPassword, role: newRole }),
       });
-      const data = await res.json();
-      if (!res.ok) { setFormError(data.detail || "Failed to create user."); return; }
-      setUsers((prev) => [...prev, { username: newUsername.trim(), role: newRole }]);
-      setModalOpen(false);
-      setNewUsername(""); setNewPassword(""); setNewRole("researcher"); setShowPw(false);
-    } catch {
-      setFormError("Network error.");
+
+      if (res.ok) {
+        setModalOpen(false);
+        setNewUsername(""); setNewPassword(""); setNewRole("intern");
+        await loadUsers();
+      } else {
+        const data = await res.json().catch(() => ({ detail: "Failed to create user" }));
+        setFormError(data.detail || "Failed to create user");
+      }
     } finally {
       setCreating(false);
     }
   }
 
   async function handleRoleChange(targetUsername: string, role: Role) {
-    if (currentUserRole === "admin") {
-      const targetUser = users.find((u) => u.username === targetUsername);
-      if (targetUser?.role === "admin" || targetUser?.role === "superadmin" || targetUsername === currentUsername) {
-        alert("Permission denied: Admins cannot change their own role or other Admin/Superadmin roles.");
-        return;
-      }
-      if (role === "admin" || role === "superadmin") {
-        alert("Permission denied: Admins cannot promote users to Admin or Superadmin.");
-        return;
-      }
-    }
     const res = await fetch(`${API_URL}/users/${targetUsername}`, {
       method: "PATCH",
       headers: {
@@ -130,23 +117,35 @@ export default function UsersPage() {
       },
       body: JSON.stringify({ role }),
     });
-    if (res.ok) setUsers((prev) => prev.map((u) => u.username === targetUsername ? { ...u, role } : u));
-    else {
-      const errData = await res.json().catch(() => ({ detail: "Role update failed" }));
-      alert(errData.detail || "Failed to update role");
+    if (res.ok) {
+      setUsers((prev) => prev.map((u) => u.username === targetUsername ? { ...u, role } : u));
+    } else {
+      const data = await res.json().catch(() => ({ detail: "Failed to update role" }));
+      alert(data.detail || "Failed to update role");
     }
   }
 
-  async function handleDelete(targetUsername: string, targetRole: Role) {
-    if (currentUserRole === "admin" && targetRole !== "intern") {
-      alert("Permission denied: Admins can only delete Intern accounts.");
-      return;
+  async function handleToggleStatus(targetUsername: string) {
+    const res = await fetch(`${API_URL}/users/${targetUsername}/toggle-status`, {
+      method: "PATCH",
+      headers: {
+        "X-User-Role": currentUserRole,
+        "X-User-Name": currentUsername,
+      },
+    });
+    if (res.ok) {
+      const data = await res.json();
+      setUsers((prev) =>
+        prev.map((u) => (u.username === targetUsername ? { ...u, disabled: data.disabled } : u))
+      );
+    } else {
+      const errData = await res.json().catch(() => ({ detail: "Toggle status failed" }));
+      alert(errData.detail || "Failed to change account status");
     }
-    if (currentUserRole !== "superadmin" && currentUserRole !== "admin") {
-      alert("Permission denied: Only Superadmin and Admin can delete accounts.");
-      return;
-    }
-    if (!confirm(`Delete user "${targetUsername}"? This cannot be undone.`)) return;
+  }
+
+  async function handleDelete(targetUsername: string, role: Role) {
+    if (!confirm(`Are you sure you want to delete user "${targetUsername}" (${role})?`)) return;
     const res = await fetch(`${API_URL}/users/${targetUsername}`, {
       method: "DELETE",
       headers: {
@@ -161,7 +160,6 @@ export default function UsersPage() {
     }
   }
 
-  // Determine allowed roles for modal creation based on user role
   const availableCreateRoles = currentUserRole === "admin"
     ? ROLES.filter((r) => r !== "superadmin" && r !== "admin")
     : ROLES;
@@ -222,10 +220,7 @@ export default function UsersPage() {
               <table className="min-w-full">
                 <thead>
                   <tr className="border-b border-zinc-700 bg-zinc-800">
-                    {(currentUserRole === "superadmin"
-                      ? ["User", "Role", "Change Role", "Actions"]
-                      : ["User", "Role", "Actions"]
-                    ).map((h) => (
+                    {["User", "Role", "Status", ...(currentUserRole === "superadmin" ? ["Role Access"] : []), "Actions"].map((h) => (
                       <th key={h} className={`px-5 py-3 text-xs font-semibold uppercase tracking-wider text-zinc-200 ${h === "Actions" ? "text-right" : "text-left"}`}>
                         {h}
                       </th>
@@ -234,21 +229,15 @@ export default function UsersPage() {
                 </thead>
                 <tbody>
                   {loading ? (
-                    <tr><td colSpan={currentUserRole === "superadmin" ? 4 : 3} className="py-16 text-center text-sm text-zinc-300">Loading…</td></tr>
+                    <tr><td colSpan={5} className="py-16 text-center text-sm text-zinc-300">Loading…</td></tr>
                   ) : users.length === 0 ? (
-                    <tr><td colSpan={currentUserRole === "superadmin" ? 4 : 3} className="py-16 text-center text-sm text-zinc-300">No users found.</td></tr>
+                    <tr><td colSpan={5} className="py-16 text-center text-sm text-zinc-300">No users found.</td></tr>
                   ) : users.map((u) => {
                     const isSelf = u.username === currentUsername;
-                    const isTargetAdmin = u.role === "admin" || u.role === "superadmin";
-
-                    // Determine if role can be modified
-                    const canModifyRole = currentUserRole === "superadmin";
-
-                    // Determine if user can be deleted
                     const canDelete = currentUserRole === "superadmin"
                       ? (!isSelf)
                       : currentUserRole === "admin"
-                        ? (u.role === "intern")
+                        ? (["intern", "researcher", "student"].includes(u.role) && !isSelf)
                         : false;
 
                     return (
@@ -267,6 +256,18 @@ export default function UsersPage() {
                         {/* Role badge */}
                         <td className="px-5 py-3"><RoleBadge role={u.role} /></td>
 
+                        {/* Account Status Badge */}
+                        <td className="px-5 py-3">
+                          <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium border ${
+                            u.disabled
+                              ? "border-red-500/30 bg-red-500/10 text-red-400"
+                              : "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
+                          }`}>
+                            <span className={`h-1.5 w-1.5 rounded-full ${u.disabled ? "bg-red-400" : "bg-emerald-400 animate-pulse"}`} />
+                            {u.disabled ? "Disabled" : "Active"}
+                          </span>
+                        </td>
+
                         {/* Role change - ONLY for superadmin */}
                         {currentUserRole === "superadmin" && (
                           <td className="px-5 py-3">
@@ -282,29 +283,38 @@ export default function UsersPage() {
                           </td>
                         )}
 
-                        {/* Delete */}
+                        {/* Actions: Disable & Delete */}
                         <td className="px-5 py-3 text-right">
-                          {canDelete ? (
-                            <button
-                              onClick={() => handleDelete(u.username, u.role)}
-                              className="inline-flex items-center gap-1.5 rounded-lg border border-red-900/50 bg-red-950/20 px-3 py-1.5 text-xs font-medium text-red-400 hover:border-red-500 hover:bg-red-500/10 hover:text-red-300 transition-colors"
-                            >
-                              <Trash2 size={13} /> Delete
-                            </button>
-                          ) : (
-                            <div className="flex justify-end">
+                          <div className="flex items-center justify-end gap-2">
+                            {currentUserRole === "superadmin" && !isSelf && (
+                              <button
+                                onClick={() => handleToggleStatus(u.username)}
+                                className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+                                  u.disabled
+                                    ? "border-emerald-700/50 bg-emerald-950/30 text-emerald-400 hover:border-emerald-500 hover:bg-emerald-500/20"
+                                    : "border-amber-700/50 bg-amber-950/30 text-amber-400 hover:border-amber-500 hover:bg-amber-500/20"
+                                }`}
+                              >
+                                {u.disabled ? "Enable" : "Disable"}
+                              </button>
+                            )}
+
+                            {canDelete ? (
+                              <button
+                                onClick={() => handleDelete(u.username, u.role)}
+                                className="inline-flex items-center gap-1.5 rounded-lg border border-red-900/50 bg-red-950/20 px-3 py-1.5 text-xs font-medium text-red-400 hover:border-red-500 hover:bg-red-500/10 hover:text-red-300 transition-colors"
+                              >
+                                <Trash2 size={13} /> Delete
+                              </button>
+                            ) : (
                               <div
-                                className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-red-500/40 bg-red-500/15 text-red-400 cursor-not-allowed shadow-sm transition-transform hover:scale-105"
-                                title={
-                                  currentUserRole === "admin"
-                                    ? "Action prohibited: Admins can only delete Intern accounts"
-                                    : "Action prohibited: Only Superadmin can delete accounts"
-                                }
+                                className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-red-500/40 bg-red-500/15 text-red-400 cursor-not-allowed shadow-sm"
+                                title="Action prohibited for this user"
                               >
                                 <Ban size={15} />
                               </div>
-                            </div>
-                          )}
+                            )}
+                          </div>
                         </td>
                       </tr>
                     );
@@ -343,7 +353,7 @@ export default function UsersPage() {
                 <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-zinc-200">Password</label>
                 <div className="relative">
                   <input
-                    type={showPw ? "text" : "password"}
+                    type={showPassword ? "text" : "password"}
                     placeholder="Min. 6 characters"
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
@@ -351,10 +361,10 @@ export default function UsersPage() {
                   />
                   <button
                     type="button"
-                    onClick={() => setShowPw((v) => !v)}
+                    onClick={() => setShowPassword((v) => !v)}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-300 hover:text-zinc-300"
                   >
-                    {showPw ? <EyeOff size={15} /> : <Eye size={15} />}
+                    {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
                   </button>
                 </div>
                 <p className="mt-1 text-xs text-zinc-300">Share this password with the user — they can change it from Settings.</p>
@@ -389,7 +399,7 @@ export default function UsersPage() {
               {formError && <p className="text-sm text-red-400">{formError}</p>}
 
               <button
-                onClick={handleCreate}
+                onClick={handleCreateUser}
                 disabled={creating}
                 className="w-full rounded-lg bg-emerald-600 py-2.5 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-50 transition-colors"
               >

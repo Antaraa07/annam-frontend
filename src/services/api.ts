@@ -6,7 +6,13 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 export async function getSummary(): Promise<DashboardSummary> {
   try {
     const username = typeof window !== "undefined" ? localStorage.getItem("username") : null;
-    const params = username ? `?username=${encodeURIComponent(username)}` : "";
+    const role = typeof window !== "undefined" ? localStorage.getItem("role") : null;
+    const roleLower = (role || "").trim().toLowerCase();
+    
+    // Explicitly allow researchers to see full dashboard summary like admins
+    const canViewAll = ["admin", "superadmin", "researcher"].includes(roleLower);
+    
+    const params = username && !canViewAll ? `?username=${encodeURIComponent(username)}` : "";
     const response = await fetch(`${API_URL}/analytics/summary${params}`);
 
     if (!response.ok) {

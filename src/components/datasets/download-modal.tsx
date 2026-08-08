@@ -5,12 +5,12 @@ import { X, Download, Loader2 } from "lucide-react";
 import { downloadStructured, StructuredDownloadRequest } from "@/services/datasets";
 import type { Dataset } from "@/types/dataset";
 
-const CATEGORIES = ["Disease", "Pest", "Damage", "Deficiency", "Healthy", "Other"];
+const CATEGORIES = ["Damage", "Deficiency", "Disease", "Normal", "Other", "Pest"];
 const GROUP_OPTIONS = [
-  { value: "label",        label: "Pest / Disease Name (Label)" },
   { value: "category",     label: "Category (Disease, Pest, etc.)" },
-  { value: "owner",        label: "Uploader Name (Owner)" },
   { value: "dataset_name", label: "Dataset Name" },
+  { value: "label",        label: "Pest / Disease Name (Label)" },
+  { value: "owner",        label: "Uploader Name (Owner)" },
 ] as const;
 
 const FORMAT_OPTIONS = [
@@ -18,11 +18,11 @@ const FORMAT_OPTIONS = [
   { key: "csv",    label: "labels.csv" },
   { key: "json",   label: "labels.json" },
   { key: "readme", label: "README.txt summary" },
-];
+] as const;
 
 interface Props {
   open: boolean;
-  onOpenChange: (v: boolean) => void;
+  onOpenChange: (open: boolean) => void;
   activeFilters: { category: string; search: string; owner: string; label: string; source: string };
   count: number;
   datasetNames: string[];
@@ -30,6 +30,7 @@ interface Props {
 }
 
 export default function DownloadModal({ open, onOpenChange, activeFilters, count, datasetNames, allDatasets }: Props) {
+  const sortedDatasetNames = useMemo(() => [...datasetNames].sort((a, b) => a.localeCompare(b)), [datasetNames]);
   const [groupBy, setGroupBy]     = useState<StructuredDownloadRequest["group_by"]>("label");
   const [limitInput, setLimitInput] = useState<string>("");
   const [formats, setFormats]     = useState<string[]>(["zip", "csv", "readme"]);
@@ -103,7 +104,7 @@ export default function DownloadModal({ open, onOpenChange, activeFilters, count
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-2xl border border-zinc-700 bg-zinc-900 p-6 shadow-2xl">
+      <div className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-2xl border border-zinc-700 bg-zinc-900 p-6 shadow-2xl [scrollbar-width:thin] [scrollbar-color:#3f3f46_transparent]">
 
         {/* Header */}
         <div className="mb-5 flex items-center justify-between">
@@ -198,7 +199,7 @@ export default function DownloadModal({ open, onOpenChange, activeFilters, count
               className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-white outline-none focus:border-emerald-500 transition-colors"
             >
               <option value="">All</option>
-              {datasetNames.map((d) => (
+              {sortedDatasetNames.map((d) => (
                 <option key={d} value={d}>
                   {d}
                 </option>

@@ -32,6 +32,7 @@ import RecentUploads from "@/components/dashboard/recent-uploads";
 import StorageUsage from "@/components/dashboard/storage-usage";
 import StatsCard from "@/components/dashboard/stats-card";
 import CropDistribution from "@/components/dashboard/crop-distribution";
+import DownloadActivityLogbook from "@/components/dashboard/download-activity-logbook";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 import { getSummary } from "@/services/api";
@@ -46,7 +47,7 @@ import type { Project } from "@/types/project";
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 const CATEGORY_COLORS: Record<string, string> = {
-  Healthy: "#34d399",
+  Normal: "#34d399",
   Disease: "#f87171",
   Pest: "#f59e0b",
   Deficiency: "#a78bfa",
@@ -367,14 +368,16 @@ export default function Home() {
   const [refreshing, setRefreshing] = useState(false);
   const [superadminPeriod, setSuperadminPeriod] = useState<"daily" | "weekly" | "monthly" | "yearly">("daily");
   const [adminPeriod, setAdminPeriod] = useState<"daily" | "weekly" | "monthly" | "yearly">("daily");
+  const [selectedRoleFilter, setSelectedRoleFilter] = useState<string>("all");
 
   const load = useCallback(async () => {
-    const curRole = localStorage.getItem("role") || "";
+    const curRole = (localStorage.getItem("role") || "").trim().toLowerCase();
     const curUsername = localStorage.getItem("username") || "";
     setRole(curRole);
     setUsername(curUsername);
 
     const isAdmin = curRole === "admin" || curRole === "superadmin";
+    const canViewAll = isAdmin || curRole === "researcher";
 
     if (isAdmin && curUsername) {
       try {
@@ -468,38 +471,17 @@ export default function Home() {
     }).sort((a, b) => b.latestUpload.localeCompare(a.latestUpload));
   }, [datasets, assignedInterns, adminPeriod]);
 
-  // Superadmin Admin Uploads Table
-  const superadminAdminUploads = useMemo(() => {
-    const adminUsernames = new Set(users.filter(u => u.role === "admin" || u.role === "superadmin").map(u => u.username));
-    const grouped = new Map<string, { count: number; dates: Date[] }>();
-    datasets.forEach(d => {
-      if (!adminUsernames.has(d.owner)) return;
-      const periodKey = getPeriodKey(d.timestamp, superadminPeriod);
-      if (!periodKey) return;
-      const key = `${periodKey}:${d.owner}`;
-      const current = grouped.get(key) ?? { count: 0, dates: [] };
-      current.count += 1;
-      if (d.timestamp) current.dates.push(new Date(d.timestamp));
-      grouped.set(key, current);
-    });
-    return [...grouped.entries()].map(([key, val]) => {
-      const [periodKey, admin] = key.split(":");
-      return {
-        periodKey,
-        admin,
-        count: val.count,
-        latestUpload: val.dates.length > 0 ? new Date(Math.max(...val.dates.map(d => d.valueOf()))).toISOString() : new Date(periodKey).toISOString()
-      };
-    })
-    .sort((a, b) => b.latestUpload.localeCompare(a.latestUpload));
-  }, [datasets, users, superadminPeriod]);
+  // Superadmin Upload Activity Breakdown with Role Filter Dropdown
+  const superadminUploadBreakdown = useMemo(() => {
+    const roleUsers = selectedRoleFilter === "all"
+      ? new Set(users.map((u) => u.username))
+      : new Set(users.filter((u) => u.role === selectedRoleFilter).map((u) => u.username));
 
-  // Superadmin Intern Uploads Table
-  const superadminInternUploads = useMemo(() => {
-    const internUsernames = new Set(users.filter(u => u.role === "intern").map(u => u.username));
+    const userRoleMap = new Map(users.map((u) => [u.username, u.role]));
     const grouped = new Map<string, { count: number; dates: Date[] }>();
-    datasets.forEach(d => {
-      if (!internUsernames.has(d.owner)) return;
+
+    datasets.forEach((d) => {
+      if (!roleUsers.has(d.owner)) return;
       const periodKey = getPeriodKey(d.timestamp, superadminPeriod);
       if (!periodKey) return;
       const key = `${periodKey}:${d.owner}`;
@@ -508,24 +490,29 @@ export default function Home() {
       if (d.timestamp) current.dates.push(new Date(d.timestamp));
       grouped.set(key, current);
     });
+
     return [...grouped.entries()].map(([key, val]) => {
-      const [periodKey, intern] = key.split(":");
+      const [periodKey, owner] = key.split(":");
+      const role = userRoleMap.get(owner) || "user";
       return {
         periodKey,
-        intern,
+        owner,
+        role,
         count: val.count,
-        latestUpload: val.dates.length > 0 ? new Date(Math.max(...val.dates.map(d => d.valueOf()))).toISOString() : new Date(periodKey).toISOString()
+        latestUpload: val.dates.length > 0 ? new Date(Math.max(...val.dates.map((d) => d.valueOf()))).toISOString() : new Date(periodKey).toISOString(),
       };
-    })
-    .sort((a, b) => b.latestUpload.localeCompare(a.latestUpload));
-  }, [datasets, users, superadminPeriod]);
+    }).sort((a, b) => b.latestUpload.localeCompare(a.latestUpload));
+  }, [datasets, users, superadminPeriod, selectedRoleFilter]);
 
   // Recharts Categories for Superadmin
   const categories = useMemo(() => {
-    const list = ["Healthy", "Disease", "Pest", "Deficiency", "Pest Damage", "Damage"] as const;
+    const list = ["Normal", "Disease", "Pest", "Deficiency", "Pest Damage", "Damage"] as const;
     return list.map((category) => ({
       category,
-      count: datasets.filter((dataset) => dataset["lab/dept"] === category).length,
+      count: datasets.filter((dataset) => {
+        const cat = dataset.department || dataset["lab/dept"] || "";
+        return cat.trim().toLowerCase() === category.trim().toLowerCase();
+      }).length,
     }));
   }, [datasets]);
 
@@ -661,13 +648,13 @@ export default function Home() {
                   </div>
                 </section>
 
-                {/* Recent Uploads Folders & Personal Recent Activity Widgets */}
+                {/* Recent Uploads Folders & Download Activity Logbook */}
                 <section className="grid gap-6 xl:grid-cols-12">
-                  <div className="xl:col-span-7">
+                  <div className="xl:col-span-6">
                     <RecentUploads data={recentUploads} isLoading={loading} />
                   </div>
-                  <div className="xl:col-span-5">
-                    <PersonalActivity data={activity} loading={loading} />
+                  <div className="xl:col-span-6">
+                    <DownloadActivityLogbook />
                   </div>
                 </section>
 
@@ -679,98 +666,78 @@ export default function Home() {
 
                 {/* Upload Activity Breakdown */}
                 <section className="overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/80 shadow-xl transition-all">
-                  <div className="flex items-center justify-between gap-4 border-b border-zinc-800 px-5 py-4">
+                  <div className="flex flex-col gap-3 border-b border-zinc-800 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                       <h2 className="text-lg font-semibold text-white">Upload Activity Breakdown</h2>
-                      <p className="mt-1 text-sm text-zinc-200">Track and compare upload counts grouped by selected period.</p>
+                      <p className="mt-1 text-sm text-zinc-200">Track and compare upload counts grouped by selected period and role.</p>
                     </div>
                     <div className="flex items-center gap-3">
-                      <span className="text-sm text-zinc-200 font-medium">Period:</span>
-                      <Select
-                        value={superadminPeriod}
-                        onValueChange={(val) => setSuperadminPeriod(val as any)}
-                      >
-                        <SelectTrigger className="w-[120px] h-9 border-zinc-800 bg-zinc-950 text-sm font-semibold text-zinc-300">
-                          <SelectValue placeholder="Period" />
-                        </SelectTrigger>
-                        <SelectContent className="border-zinc-800 bg-zinc-950 text-zinc-300">
-                          <SelectItem value="daily">Daily</SelectItem>
-                          <SelectItem value="weekly">Weekly</SelectItem>
-                          <SelectItem value="monthly">Monthly</SelectItem>
-                          <SelectItem value="yearly">Yearly</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-zinc-200 font-medium">Role:</span>
+                        <select
+                          value={selectedRoleFilter}
+                          onChange={(e) => setSelectedRoleFilter(e.target.value)}
+                          className="rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-1.5 text-sm font-semibold text-zinc-300 outline-none focus:border-emerald-500"
+                        >
+                          <option value="all">All Roles</option>
+                          <option value="intern">Intern</option>
+                          <option value="researcher">Researcher</option>
+                          <option value="student">Student</option>
+                          <option value="admin">Admin</option>
+                        </select>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-zinc-200 font-medium">Period:</span>
+                        <Select
+                          value={superadminPeriod}
+                          onValueChange={(val) => setSuperadminPeriod(val as any)}
+                        >
+                          <SelectTrigger className="w-[120px] h-9 border-zinc-800 bg-zinc-950 text-sm font-semibold text-zinc-300">
+                            <SelectValue placeholder="Period" />
+                          </SelectTrigger>
+                          <SelectContent className="border-zinc-800 bg-zinc-950 text-zinc-300">
+                            <SelectItem value="daily">Daily</SelectItem>
+                            <SelectItem value="weekly">Weekly</SelectItem>
+                            <SelectItem value="monthly">Monthly</SelectItem>
+                            <SelectItem value="yearly">Yearly</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 p-5">
-                    {/* Admin Partition */}
-                    <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 overflow-hidden">
-                      <div className="border-b border-zinc-800 bg-zinc-900/80 px-4 py-3">
-                        <h3 className="font-semibold text-white text-sm">Admin Uploads</h3>
-                      </div>
-                      <div className="overflow-x-auto max-h-[400px] overflow-y-auto [scrollbar-width:thin] [scrollbar-color:#3f3f46_transparent]">
-                        <table className="w-full text-base">
-                          <thead className="border-b border-zinc-800 bg-zinc-950">
-                            <tr>
-                              {["Period", "Admin Username", "Uploaded Images", "Latest Upload"].map((heading) => (
-                                <th key={heading} className="px-4 py-2.5 text-left text-sm font-semibold uppercase tracking-wider text-zinc-200">{heading}</th>
-                              ))}
+                  <div className="overflow-x-auto max-h-[400px] overflow-y-auto [scrollbar-width:thin] [scrollbar-color:#3f3f46_transparent]">
+                    <table className="w-full text-base">
+                      <thead className="border-b border-zinc-800 bg-zinc-950">
+                        <tr>
+                          {["Period", "Contributor Username", "Role", "Uploaded Images", "Latest Upload"].map((heading) => (
+                            <th key={heading} className="px-5 py-3 text-left text-sm font-semibold uppercase tracking-wider text-zinc-200">{heading}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {superadminUploadBreakdown.length === 0 ? (
+                          <tr>
+                            <td colSpan={5} className="px-5 py-12 text-center text-zinc-300 text-sm">No uploads recorded for this role selection.</td>
+                          </tr>
+                        ) : (
+                          superadminUploadBreakdown.map((record, index) => (
+                            <tr key={`${record.periodKey}-${record.owner}-${index}`} className="border-b border-zinc-800/40 last:border-0 hover:bg-zinc-850/30">
+                              <td className="px-5 py-3.5 text-zinc-300 font-medium whitespace-nowrap">{formatPeriod(record.periodKey, superadminPeriod)}</td>
+                              <td className="px-5 py-3.5 font-semibold text-white">{record.owner}</td>
+                              <td className="px-5 py-3.5">
+                                <span className="rounded-full border border-zinc-700 bg-zinc-800 px-2.5 py-0.5 text-xs font-semibold text-emerald-400 capitalize">
+                                  {record.role}
+                                </span>
+                              </td>
+                              <td className="px-5 py-3.5 text-emerald-400 font-bold font-mono">{record.count}</td>
+                              <td className="px-5 py-3.5 text-zinc-300 text-sm whitespace-nowrap">{formatTime(record.latestUpload)}</td>
                             </tr>
-                          </thead>
-                          <tbody>
-                            {superadminAdminUploads.length === 0 ? (
-                              <tr>
-                                <td colSpan={4} className="px-4 py-8 text-center text-zinc-300 text-sm">No admin uploads recorded.</td>
-                              </tr>
-                            ) : (
-                              superadminAdminUploads.map((record, index) => (
-                                <tr key={`admin-${record.periodKey}-${record.admin}-${index}`} className="border-b border-zinc-800/40 last:border-0 hover:bg-zinc-850/30">
-                                  <td className="px-4 py-3 text-zinc-300 font-medium whitespace-nowrap">{formatPeriod(record.periodKey, superadminPeriod)}</td>
-                                  <td className="px-4 py-3 font-semibold text-white">{record.admin}</td>
-                                  <td className="px-4 py-3 text-emerald-400 font-bold font-mono">{record.count}</td>
-                                  <td className="px-4 py-3 text-zinc-300 text-sm whitespace-nowrap">{formatTime(record.latestUpload)}</td>
-                                </tr>
-                              ))
-                            )}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-
-                    {/* Intern Partition */}
-                    <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 overflow-hidden">
-                      <div className="border-b border-zinc-800 bg-zinc-900/80 px-4 py-3">
-                        <h3 className="font-semibold text-white text-sm">Intern Uploads</h3>
-                      </div>
-                      <div className="overflow-x-auto max-h-[400px] overflow-y-auto [scrollbar-width:thin] [scrollbar-color:#3f3f46_transparent]">
-                        <table className="w-full text-base">
-                          <thead className="border-b border-zinc-800 bg-zinc-950">
-                            <tr>
-                              {["Period", "Intern Username", "Uploaded Images", "Latest Upload"].map((heading) => (
-                                <th key={heading} className="px-4 py-2.5 text-left text-sm font-semibold uppercase tracking-wider text-zinc-200">{heading}</th>
-                              ))}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {superadminInternUploads.length === 0 ? (
-                              <tr>
-                                <td colSpan={4} className="px-4 py-8 text-center text-zinc-300 text-sm">No intern uploads recorded.</td>
-                              </tr>
-                            ) : (
-                              superadminInternUploads.map((record, index) => (
-                                <tr key={`intern-${record.periodKey}-${record.intern}-${index}`} className="border-b border-zinc-800/40 last:border-0 hover:bg-zinc-850/30">
-                                  <td className="px-4 py-3 text-zinc-300 font-medium whitespace-nowrap">{formatPeriod(record.periodKey, superadminPeriod)}</td>
-                                  <td className="px-4 py-3 font-semibold text-white">{record.intern}</td>
-                                  <td className="px-4 py-3 text-violet-400 font-bold font-mono">{record.count}</td>
-                                  <td className="px-4 py-3 text-zinc-300 text-sm whitespace-nowrap">{formatTime(record.latestUpload)}</td>
-                                </tr>
-                              ))
-                            )}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
                   </div>
                 </section>
               </div>

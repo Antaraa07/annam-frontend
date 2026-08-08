@@ -11,7 +11,7 @@ import { motion } from "framer-motion";
 import { uploadDataset } from "@/services/upload";
 import { UploadMetadata, UploadMetadataDialog } from "./upload-metadata-dialog";
 
-const CATEGORIES = ["Healthy", "Disease", "Pest", "Deficiency", "Pest Damage", "Damage"];
+const CATEGORIES = ["Damage", "Deficiency", "Disease", "Normal", "Pest", "Pest Damage"];
 
 export default function UploadForm() {
   const [loading, setLoading] = useState(false);
@@ -85,6 +85,11 @@ export default function UploadForm() {
     if (!form.dataset_name.trim()) { toast.error("Enter a dataset name."); return; }
     if (!form.lab_dept) { toast.error("Select a category before uploading."); return; }
     if (!metadata) { toast.error("Save category metadata before uploading."); return; }
+    
+    if (metadata.crop_name && form.dataset_name.trim() !== metadata.crop_name.trim()) {
+      toast.error("Dataset name must match the Crop Name exactly (case-sensitive).");
+      return;
+    }
 
     setLoading(true);
     setProgress({ done: 0, total: files.length });

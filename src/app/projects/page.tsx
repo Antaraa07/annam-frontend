@@ -39,7 +39,7 @@ export default function ProjectsPage() {
   const [customInput, setCustomInput] = useState("");
   const [creating, setCreating] = useState(false);
 
-  const DEFAULT_CATEGORIES = ["Disease", "Pest", "Damage", "Deficiency"];
+  const DEFAULT_CATEGORIES = ["Damage", "Deficiency", "Disease", "Normal", "Pest"];
   const customInputRef = useRef<HTMLInputElement>(null);
 
   function toggleCategory(cat: string) {

@@ -11,15 +11,24 @@ export async function getDatasets(): Promise<Dataset[]> {
   try {
     const username = typeof window !== "undefined" ? localStorage.getItem("username") : null;
     const role = typeof window !== "undefined" ? localStorage.getItem("role") : null;
-    const isAdmin = role === "admin" || role === "superadmin";
-    const url = username && !isAdmin ? `${API_URL}/datasets?username=${username}` : `${API_URL}/datasets`;
+    const roleLower = (role || "").trim().toLowerCase();
+    
+    // Explicitly allow researchers to see all datasets like admins
+    const canViewAll = ["admin", "superadmin", "researcher"].includes(roleLower);
+    
+    const url = username && !canViewAll ? `${API_URL}/datasets?username=${username}` : `${API_URL}/datasets`;
+    
+    console.log(`[getDatasets] Fetching datasets for user: ${username}, role: ${roleLower}, canViewAll: ${canViewAll}`);
+    
     const response = await fetch(url);
 
     if (!response.ok) {
-      throw new Error("Failed to fetch datasets");
+      throw new Error(`Failed to fetch datasets: ${response.statusText}`);
     }
 
-    return response.json();
+    const data = await response.json();
+    console.log(`[getDatasets] Fetched ${data.length} datasets successfully.`);
+    return data;
   } catch (error) {
     console.warn('API unavailable, using mock data for datasets:', error);
     return mockApiCall(MOCK_DATASETS);
@@ -59,7 +68,8 @@ export function getImageUrl(filename?: string | null) {
 
 export function getDownloadUrl(filename?: string | null) {
   if (!filename || typeof filename !== 'string') return '#';
-  return `${API_URL}/download/${filename}`;
+  const username = typeof window !== "undefined" ? localStorage.getItem("username") ?? "" : "";
+  return `${API_URL}/download/${filename}?username=${encodeURIComponent(username)}`;
 }
 
 export interface StructuredDownloadRequest {
@@ -206,7 +216,9 @@ export async function rejectDeletionRequest(request_id: string, user_role: strin
 }
 
 export async function downloadRawImagesZip(dataset_name?: string, category?: string): Promise<void> {
+  const username = typeof window !== "undefined" ? localStorage.getItem("username") ?? undefined : undefined;
   await downloadStructured({
+    username,
     group_by: "category",
     formats: ["zip"], // ONLY zip containing images
     dataset_name,

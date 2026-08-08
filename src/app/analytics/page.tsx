@@ -34,13 +34,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { downloadBlob } from "@/utils/download";
 import type { Dataset } from "@/types/dataset";
 import type { Project } from "@/types/project";
+import { jsPDF } from "jspdf";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 const CHART_COLORS = ["#10b981", "#06b6d4", "#f59e0b", "#8b5cf6", "#ec4899", "#f97316", "#0ea5e9", "#14b8a6"];
 
 const CATEGORY_COLORS: Record<string, string> = {
-  Healthy: "#10b981",
+  Normal: "#10b981",
   Disease: "#f43f5e",
   Pest: "#eab308",
   Deficiency: "#a855f7",
@@ -131,6 +132,8 @@ export default function AnalyticsPage() {
   const [internPeriod, setInternPeriod] = useState<"daily" | "weekly" | "monthly" | "yearly">("monthly");
   const [imageVolumeSource, setImageVolumeSource] = useState<"project" | "raw_data">("project");
   const [internSplitSource, setInternSplitSource] = useState<"project" | "raw_data">("project");
+  const [chartRoleFilter, setChartRoleFilter] = useState<"intern" | "researcher" | "student" | "all">("all");
+  const [tableRoleFilter, setTableRoleFilter] = useState<"intern" | "researcher" | "student" | "all">("all");
 
   useEffect(() => {
     setRole(localStorage.getItem("role") || "");
@@ -139,14 +142,15 @@ export default function AnalyticsPage() {
 
   async function loadAnalytics() {
     try {
-      const curRole = localStorage.getItem("role") || "";
+      const curRole = (localStorage.getItem("role") || "").trim().toLowerCase();
       const curUsername = localStorage.getItem("username") || "";
+      const canViewAll = curRole === "admin" || curRole === "superadmin" || curRole === "researcher";
       const isAdmin = curRole === "admin" || curRole === "superadmin";
 
       const [summaryData, ownerData, activityData, allDatasets, usersRes, projectsRes] = await Promise.all([
-        getSummary(isAdmin ? undefined : curUsername),
-        isAdmin ? getOwners() : Promise.resolve([]),
-        getRecentActivity(),
+        getSummary(canViewAll ? undefined : curUsername),
+        canViewAll ? getOwners() : Promise.resolve([]),
+        getRecentActivity(canViewAll),
         getDatasets(),
         isAdmin ? fetch(`${API_URL}/users`).then((res) => (res.ok ? res.json() : [])) : Promise.resolve([]),
         isAdmin ? fetch(`${API_URL}/projects?username=${curUsername}`).then((res) => (res.ok ? res.json() : [])) : Promise.resolve([]),
@@ -294,6 +298,34 @@ export default function AnalyticsPage() {
     };
   }, [isSuperadmin, users, projects, datasets]);
 
+  const getContributorStats = useMemo(() => {
+    return (roleFilter: string) => {
+      let targetUsers = users;
+      if (roleFilter !== "all") {
+        targetUsers = users.filter((u) => u.role?.toLowerCase() === roleFilter);
+      } else {
+        targetUsers = users.filter((u) => ["intern", "researcher", "student"].includes(u.role?.toLowerCase()));
+      }
+
+      return targetUsers.map((u) => {
+        const username = u.username;
+        const myUploads = datasets.filter((d) => d.owner === username).length;
+        const assignedProjects = projects.filter((p) => p.assigned_users?.includes(username)).map((p) => p.name);
+
+        return {
+          username,
+          role: u.role,
+          uploadedImages: myUploads,
+          projectsCount: assignedProjects.length,
+          projects: assignedProjects.join(", ") || "—",
+        };
+      }).sort((a, b) => b.uploadedImages - a.uploadedImages);
+    };
+  }, [users, datasets, projects]);
+
+  const chartContributorData = useMemo(() => getContributorStats(chartRoleFilter).slice(0, 8), [getContributorStats, chartRoleFilter]);
+  const tableContributorData = useMemo(() => getContributorStats(tableRoleFilter), [getContributorStats, tableRoleFilter]);
+
   // Admin scoped analytics (strictly for their managed projects/interns/raw uploads)
   const adminAnalytics = useMemo(() => {
     if (!isAdmin) return null;
@@ -375,28 +407,85 @@ export default function AnalyticsPage() {
   const handleDownloadReport = () => {
     if (!reportSummary) return;
 
-    let text = `ANNAM DATA PLATFORM - WORK CONTRIBUTION REPORT\n`;
-    text += `==============================================\n\n`;
-    text += `Contributor Name : ${username}\n`;
-    text += `Role             : ${role.toUpperCase()}\n`;
-    text += `Report Date      : ${new Date().toLocaleDateString("en-IN")}\n`;
-    text += `Total Months Active : ${reportSummary.monthsCount} month(s)\n`;
-    text += `Total Images Contributed : ${reportSummary.totalUploads}\n\n`;
-    text += `MONTH-BY-MONTH SUMMARY:\n`;
-    text += `----------------------------------------------\n\n`;
+    const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
 
-    reportSummary.months.forEach((m) => {
-      text += `[${m.label}]\n`;
-      text += `  • Uploaded Images   : ${m.imagesCount}\n`;
-      text += `  • Unique Datasets   : ${m.datasetsCount}\n`;
-      text += `  • Field Categories  : ${m.categories.join(", ")}\n`;
-      text += `\n`;
+    // Add Watermark
+    doc.setTextColor(200, 200, 200);
+    doc.setFontSize(60);
+    // Rotate watermark diagonally
+    doc.text("annam.ai", pageWidth / 2, pageHeight / 2, {
+      align: "center",
+      angle: -45,
     });
 
-    text += `==============================================\n`;
-    text += `End of Report. Generated automatically by ANNAM Storage Platform.\n`;
+    // Reset text color for content
+    doc.setTextColor(0, 0, 0);
 
-    downloadBlob(new Blob([text], { type: "text/plain" }), `${username}_work_report.txt`);
+    // Header
+    doc.setFontSize(18);
+    doc.setFont("helvetica", "bold");
+    doc.text("ANNAM DATA PLATFORM - WORK CONTRIBUTION REPORT", 14, 22);
+    
+    doc.setLineWidth(0.5);
+    doc.line(14, 25, pageWidth - 14, 25);
+
+    doc.setFontSize(12);
+    doc.setFont("helvetica", "normal");
+    doc.text(`Contributor Name: ${username}`, 14, 35);
+    doc.text(`Role: ${role.toUpperCase()}`, 14, 42);
+    doc.text(`Report Date: ${new Date().toLocaleDateString("en-IN")}`, 14, 49);
+    doc.text(`Total Months Active: ${reportSummary.monthsCount} month(s)`, 14, 56);
+    doc.text(`Total Images Contributed: ${reportSummary.totalUploads}`, 14, 63);
+
+    doc.setFontSize(14);
+    doc.setFont("helvetica", "bold");
+    doc.text("MONTH-BY-MONTH SUMMARY:", 14, 75);
+    doc.setLineWidth(0.2);
+    doc.line(14, 77, pageWidth - 14, 77);
+
+    let currentY = 85;
+
+    doc.setFontSize(11);
+    doc.setFont("helvetica", "normal");
+
+    reportSummary.months.forEach((m) => {
+      // Check if we need a new page
+      if (currentY > pageHeight - 40) {
+        doc.addPage();
+        currentY = 20;
+        
+        // Add Watermark on new page
+        doc.setTextColor(200, 200, 200);
+        doc.setFontSize(60);
+        doc.text("annam.ai", pageWidth / 2, pageHeight / 2, {
+          align: "center",
+          angle: -45,
+        });
+        doc.setTextColor(0, 0, 0);
+        doc.setFontSize(11);
+      }
+
+      doc.setFont("helvetica", "bold");
+      doc.text(`[${m.label}]`, 14, currentY);
+      doc.setFont("helvetica", "normal");
+      currentY += 6;
+      doc.text(`• Uploaded Images: ${m.imagesCount}`, 20, currentY);
+      currentY += 6;
+      doc.text(`• Unique Datasets: ${m.datasetsCount}`, 20, currentY);
+      currentY += 6;
+      doc.text(`• Field Categories: ${m.categories.join(", ")}`, 20, currentY);
+      currentY += 10;
+    });
+
+    doc.setLineWidth(0.5);
+    doc.line(14, currentY, pageWidth - 14, currentY);
+    currentY += 6;
+    doc.setFontSize(10);
+    doc.text("End of Report. Generated automatically by ANNAM Storage Platform.", 14, currentY);
+
+    doc.save(`${username}_work_report.pdf`);
   };
 
   return (
@@ -560,13 +649,33 @@ export default function AnalyticsPage() {
                         </div>
                       </div>
                       <div className="rounded-2xl border border-zinc-800/80 bg-zinc-900/60 p-5 hover:border-emerald-500/30 transition-all duration-300 backdrop-blur-md shadow-lg">
-                        <div className="flex items-center gap-2 mb-5">
-                          <span className="h-2.5 w-2.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.6)]" />
-                          <h3 className="font-semibold text-white text-sm">Interns — Upload Contribution (Top 8)</h3>
+                        <div className="flex items-center justify-between gap-2 mb-5">
+                          <div className="flex items-center gap-2">
+                            <span className="h-2.5 w-2.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.6)]" />
+                            <h3 className="font-semibold text-white text-sm">
+                              {chartRoleFilter === "intern"
+                                ? "Interns"
+                                : chartRoleFilter === "researcher"
+                                ? "Researchers"
+                                : chartRoleFilter === "student"
+                                ? "Students"
+                                : "All Contributors"} — Upload Contribution (Top 8)
+                            </h3>
+                          </div>
+                          <select
+                            value={chartRoleFilter}
+                            onChange={(e) => setChartRoleFilter(e.target.value as any)}
+                            className="rounded-lg border border-zinc-700 bg-zinc-800 px-2.5 py-1 text-xs text-white outline-none focus:border-emerald-500 transition-colors cursor-pointer"
+                          >
+                            <option value="intern">Interns</option>
+                            <option value="researcher">Researchers</option>
+                            <option value="student">Students</option>
+                            <option value="all">All Contributors</option>
+                          </select>
                         </div>
                         <div className="h-64">
                           <ResponsiveContainer width="100%" height="100%">
-                            <ComposedChart data={superadminAnalytics.internStats.slice(0, 8)} margin={{ top: 15, right: 15, left: -20, bottom: 0 }}>
+                            <ComposedChart data={chartContributorData} margin={{ top: 15, right: 15, left: -20, bottom: 0 }}>
                               <defs>
                                 <linearGradient id="internBarGrad" x1="0" y1="0" x2="0" y2="1">
                                   <stop offset="0%" stopColor="#10b981" stopOpacity={0.4}/>
@@ -578,7 +687,7 @@ export default function AnalyticsPage() {
                                   <stop offset="100%" stopColor="#059669"/>
                                 </linearGradient>
                               </defs>
-                              <XAxis dataKey="intern" tick={{ fill: "#a1a1aa", fontSize: 11 }} axisLine={false} tickLine={false} />
+                              <XAxis dataKey="username" tick={{ fill: "#a1a1aa", fontSize: 11 }} axisLine={false} tickLine={false} />
                               <YAxis tick={{ fill: "#71717a", fontSize: 11 }} axisLine={false} tickLine={false} />
                               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
                               <Tooltip cursor={{ fill: "rgba(255,255,255,0.03)" }} contentStyle={TOOLTIP_STYLE} />
@@ -629,35 +738,72 @@ export default function AnalyticsPage() {
                       </div>
                     </div>
 
-                    {/* Intern Contribution Section */}
+                    {/* Contributor Contribution Section */}
                     <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6 hover:border-emerald-500/20 transition-colors duration-300">
-                      <div className="flex items-center gap-2.5 mb-5">
-                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/10 border border-emerald-500/20">
-                          <ShieldCheck size={15} className="text-emerald-400" />
+                      <div className="flex items-center justify-between gap-2 mb-5">
+                        <div className="flex items-center gap-2.5">
+                          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+                            <ShieldCheck size={15} className="text-emerald-400" />
+                          </div>
+                          <h2 className="text-base font-semibold text-white">
+                            {tableRoleFilter === "intern"
+                              ? "Intern"
+                              : tableRoleFilter === "researcher"
+                              ? "Researcher"
+                              : tableRoleFilter === "student"
+                              ? "Student"
+                              : "All Contributor"} Contribution Details
+                          </h2>
                         </div>
-                        <h2 className="text-base font-semibold text-white">Intern Contribution Details</h2>
+                        <select
+                          value={tableRoleFilter}
+                          onChange={(e) => setTableRoleFilter(e.target.value as any)}
+                          className="rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs text-white outline-none focus:border-emerald-500 transition-colors cursor-pointer"
+                        >
+                          <option value="intern">Interns</option>
+                          <option value="researcher">Researchers</option>
+                          <option value="student">Students</option>
+                          <option value="all">All Contributors</option>
+                        </select>
                       </div>
                       <div className="overflow-x-auto">
                         <table className="w-full text-base">
                           <thead>
                             <tr className="border-b border-zinc-800/60 text-left">
-                              <th className="pb-3 text-xs font-semibold uppercase tracking-widest text-zinc-500">Intern</th>
+                              <th className="pb-3 text-xs font-semibold uppercase tracking-widest text-zinc-500">
+                                {tableRoleFilter === "all" ? "User / Role" : `${tableRoleFilter.charAt(0).toUpperCase() + tableRoleFilter.slice(1)} Username`}
+                              </th>
                               <th className="pb-3 text-xs font-semibold uppercase tracking-widest text-zinc-500">Images</th>
                               <th className="pb-3 text-xs font-semibold uppercase tracking-widest text-zinc-500">Projects</th>
                               <th className="pb-3 text-xs font-semibold uppercase tracking-widest text-zinc-500">Project Names</th>
                             </tr>
                           </thead>
                           <tbody>
-                            {superadminAnalytics.internStats.map((stat) => (
-                              <tr key={stat.intern} className="border-b border-zinc-800/30 last:border-0 hover:bg-zinc-800/20 transition-colors">
-                                <td className="py-3.5 font-semibold text-white">{stat.intern}</td>
-                                <td className="py-3.5 font-mono">
-                                  <span className="rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-sm font-bold text-emerald-400">{stat.uploadedImages}</span>
+                            {tableContributorData.length === 0 ? (
+                              <tr>
+                                <td colSpan={4} className="py-8 text-center text-sm text-zinc-500">
+                                  No contributors found for this role selection.
                                 </td>
-                                <td className="py-3.5 text-cyan-400 font-mono font-semibold">{stat.projectsCount}</td>
-                                <td className="py-3.5 text-zinc-300 max-w-xs truncate">{stat.projects}</td>
                               </tr>
-                            ))}
+                            ) : (
+                              tableContributorData.map((stat) => (
+                                <tr key={stat.username} className="border-b border-zinc-800/30 last:border-0 hover:bg-zinc-800/20 transition-colors">
+                                  <td className="py-3.5 font-semibold text-white flex items-center gap-2">
+                                    <span>{stat.username}</span>
+                                    {tableRoleFilter === "all" && (
+                                      <span className="rounded-full border border-zinc-700 bg-zinc-800/80 px-2 py-0.2 text-[10px] font-medium text-emerald-400 capitalize">
+                                        {stat.role}
+                                      </span>
+                                    )}
+                                  </td>
+                                  <td className="py-3.5 font-mono">
+                                    <span className="rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-sm font-bold text-emerald-400">{stat.uploadedImages}</span>
+                                  </td>
+                                  <td className="py-3.5 text-cyan-400 font-mono font-semibold">{stat.projectsCount}</td>
+                                  <td className="py-3.5 text-zinc-300 max-w-xs truncate">{stat.projects}</td>
+                                </tr>
+                              ))
+                            )}
                           </tbody>
                         </table>
                       </div>

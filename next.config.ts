@@ -22,7 +22,7 @@ try {
 
 const nextConfig: NextConfig = {
   // Allow other PCs on the LAN to access Next.js dev resources
-  allowedDevOrigins: ["172.31.62.93"],
+  allowedDevOrigins: ["172.31.61.97"],
 
   ...(imageRemotePatterns ? { images: imageRemotePatterns } : {}),
 

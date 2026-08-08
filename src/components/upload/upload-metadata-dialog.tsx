@@ -18,8 +18,11 @@ type Field = {
 
 export type UploadMetadata = Record<string, string>;
 
-const cropStageOptions = ["Seedling", "Vegetative", "Flowering", "Harvest"];
-const withCustom = (options: string[]) => [...new Set(options), "Custom"];
+const cropStageOptions = ["Flowering", "Harvest", "Seedling", "Vegetative"];
+const withCustom = (options: string[]) => {
+  const sorted = [...new Set(options)].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+  return [...sorted, "Custom"];
+};
 const diseaseTypeOptions = withCustom(["Fungal", "Bacterial", "Viral", "Nematode", "Physiological"]);
 const severityOptions = ["Mild", "Moderate", "Severe", "Unknown"];
 const activeTimeOptions = withCustom(["Day", "Night", "Both"]);
@@ -464,7 +467,7 @@ const diseaseNameOptions = withCustom([
 ]);
 
 export const METADATA_SCHEMAS: Record<string, Field[]> = {
-  Healthy: [
+  Normal: [
     { key: "crop_type", label: "Crop Type", required: true, type: "select", options: cropTypeOptions },
     { key: "crop_name", label: "Crop Name", required: true, type: "select", options: cropNameOptions },
     { key: "planting_date", label: "Planting Date", type: "date" },

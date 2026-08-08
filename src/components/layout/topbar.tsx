@@ -7,6 +7,7 @@ const ROLE_STYLE: Record<string, string> = {
   admin: "text-amber-300",
   intern: "text-emerald-300",
   researcher: "text-cyan-300",
+  student: "text-blue-300",
 };
 
 export default function Topbar() {

@@ -23,12 +23,14 @@ export default function DatasetsPage() {
   const router = useRouter();
 
   const [datasets, setDatasets]           = useState<Dataset[]>([]);
+  const [users, setUsers]                 = useState<{ username: string; role: string }[]>([]);
   const [loading, setLoading]             = useState(true);
   const [selectedDataset, setSelectedDataset] = useState<Dataset | null>(null);
   const [dialogOpen, setDialogOpen]       = useState(false);
   const [search, setSearch]               = useState("");
   const [owner, setOwner]                 = useState("");
   const [category, setCategory]           = useState("");
+  const [roleFilter, setRoleFilter]       = useState("");
 
   const [refreshing, setRefreshing] = useState(false);
   const [downloadOpen, setDownloadOpen] = useState(false);
@@ -62,12 +64,15 @@ export default function DatasetsPage() {
 
   async function loadData() {
     try {
-      const [data, reqs] = await Promise.all([
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const [data, reqs, usersRes] = await Promise.all([
         getDatasets(),
         getDeletionRequests(),
+        fetch(`${API_URL}/users`).then(r => r.ok ? r.json() : []).catch(() => []),
       ]);
       setDatasets(data);
       setDeletionRequests(reqs);
+      setUsers(usersRes);
     } catch (error) {
       console.error(error);
     } finally {
@@ -83,10 +88,15 @@ export default function DatasetsPage() {
     await loadData();
   }
 
-  const owners = useMemo(
-    () => [...new Set(datasets.filter(d => !d.project_id).map((d) => d.owner))],
-    [datasets]
-  );
+  const userRoleMap = useMemo(() => new Map(users.map(u => [u.username, u.role])), [users]);
+
+  const owners = useMemo(() => {
+    let filtered = datasets.filter(d => !d.project_id);
+    if (roleFilter) {
+      filtered = filtered.filter(d => userRoleMap.get(d.owner) === roleFilter);
+    }
+    return [...new Set(filtered.map((d) => d.owner))];
+  }, [datasets, roleFilter, userRoleMap]);
 
   const datasetNames = useMemo(
     () => [...new Set(datasets.filter(d => !d.project_id && d.dataset_name).map((d) => d.dataset_name))],
@@ -103,15 +113,21 @@ export default function DatasetsPage() {
       // Exclude any project/annotated data - raw only!
       if (dataset.project_id) return false;
 
+      // Interns and students can only see their own datasets
+      if ((currentUserRole === "intern" || currentUserRole === "student") && dataset.owner !== currentUsername) {
+        return false;
+      }
+
       const datasetName = dataset.dataset_name ?? "";
       const description = dataset.description ?? "";
       const query = search.toLowerCase();
       const matchesSearch   = datasetName.toLowerCase().includes(query) || description.toLowerCase().includes(query);
       const matchesOwner    = owner === "" || dataset.owner === owner;
-      const matchesCategory = category === "" || dataset["lab/dept"] === category;
-      return matchesSearch && matchesOwner && matchesCategory;
+      const matchesCategory = category === "" || (dataset.department || dataset["lab/dept"]) === category;
+      const matchesRole     = roleFilter === "" || userRoleMap.get(dataset.owner) === roleFilter;
+      return matchesSearch && matchesOwner && matchesCategory && matchesRole;
     }),
-    [datasets, search, owner, category]
+    [datasets, search, owner, category, roleFilter, userRoleMap, currentUserRole, currentUsername]
   );
 
   const displayedDatasets = useMemo(() => {
@@ -346,6 +362,9 @@ export default function DatasetsPage() {
               category={category}
               setCategory={setCategory}
               owners={owners}
+              roleFilter={roleFilter}
+              setRoleFilter={setRoleFilter}
+              currentUserRole={currentUserRole}
             />
 
             {loading ? (
